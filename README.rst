@@ -75,3 +75,7 @@ The goals of Alembic are:
 
 Documentation and status of Alembic is at http://readthedocs.org/docs/alembic/.
 
+Changes via Limodou
+
+- [Fix] Pickle autogenerate bug
+- [Fix] Add simple type change compare, e.g., varchar, char, datetime, date, time, decimal
