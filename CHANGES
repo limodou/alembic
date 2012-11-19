@@ -1,3 +1,8 @@
+0.4.1
+=====
+- [Fix] Pickle autogenerate bug
+- [Fix] Add simple type change compare, e.g., varchar, char, datetime, date, time, decimal
+
 0.4.0
 =====
 - [feature] Support for tables in alternate schemas

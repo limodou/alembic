@@ -297,6 +297,30 @@ def _compare_nullable(schema, tname, cname, conn_col,
             cname
         )
 
+def _get_type(t):
+    
+    name = t.__class__.__name__
+    r = repr(t)
+    if name.upper() == 'VARCHAR':
+        r = '%s(length=%d)' % (name, t.length)
+    elif name.upper() == 'CHAR':
+        r = '%s(length=%d)' % (name, t.length)
+    elif name.upper() == 'DECIMAL':
+        r = '%s(precision=%d, scale=%d)' % ('Numeric', t.precision, t.scale)
+    elif name.upper() == 'PICKLETYPE':
+        r = '%s()' % 'BLOB'
+    elif name.upper() == 'INTEGER':
+        r = '%s()' % 'INTEGER'
+    return r
+    
+def _compare(c1, c2):
+    r1 = _get_type(c1)
+    r2 = _get_type(c2)
+    if r1.upper() == 'BOOLEAN()' or r2.upper() == 'BOOLEAN()':
+        return False
+    else:
+        return r1.upper() != r2.upper()
+
 def _compare_type(schema, tname, cname, conn_col,
                             metadata_col, diffs,
                             autogen_context):
@@ -312,7 +336,8 @@ def _compare_type(schema, tname, cname, conn_col,
                         "the model; can't compare" % (tname, cname))
         return
 
-    isdiff = autogen_context['context']._compare_type(conn_col, metadata_col)
+    #isdiff = autogen_context['context']._compare_type(conn_col, metadata_col)
+    isdiff = _compare(conn_col['type'], metadata_col.type)
 
     if isdiff:
 
@@ -473,6 +498,7 @@ def _add_column(schema, tname, column, autogen_context):
             "tname": tname,
             "column": _render_column(column, autogen_context)
             }
+
     if schema:
         text += ", schema=%r" % schema
     text += ")"
@@ -574,15 +600,23 @@ def _render_server_default(default, autogen_context):
         return None
 
 def _repr_type(prefix, type_, autogen_context):
+    from sqlalchemy.types import PickleType
+
+    def _repr(t):
+        if isinstance(t, PickleType):
+            return 'PickleType()'
+        else:
+            return repr(t)
+
     mod = type(type_).__module__
     imports = autogen_context.get('imports', None)
     if mod.startswith("sqlalchemy.dialects"):
         dname = re.match(r"sqlalchemy\.dialects\.(\w+)", mod).group(1)
         if imports is not None:
             imports.add("from sqlalchemy.dialects import %s" % dname)
-        return "%s.%r" % (dname, type_)
+        return "%s.%s" % (dname, _repr(type_))
     else:
-        return "%s%r" % (prefix, type_)
+        return "%s%s" % (prefix, _repr(type_))
 
 def _render_constraint(constraint, autogen_context):
     renderer = _constraint_renderers.get(type(constraint), None)
