@@ -1,7 +1,7 @@
 from alembic import util
 from alembic.ddl import impl
 from sqlalchemy.types import NULLTYPE, Integer
-from sqlalchemy import schema, sql
+from sqlalchemy import schema as sa_schema, sql
 from contextlib import contextmanager
 import alembic
 
@@ -52,20 +52,25 @@ class Operations(object):
 
     def _foreign_key_constraint(self, name, source, referent,
                                     local_cols, remote_cols,
-                                    onupdate=None, ondelete=None):
-        m = schema.MetaData()
+                                    onupdate=None, ondelete=None,
+                                    source_schema=None, referent_schema=None):
+        m = sa_schema.MetaData()
         if source == referent:
             t1_cols = local_cols + remote_cols
         else:
             t1_cols = local_cols
-            schema.Table(referent, m,
-                *[schema.Column(n, NULLTYPE) for n in remote_cols])
+            sa_schema.Table(referent, m,
+                    *[sa_schema.Column(n, NULLTYPE) for n in remote_cols],
+                    schema=referent_schema)
 
-        t1 = schema.Table(source, m,
-                *[schema.Column(n, NULLTYPE) for n in t1_cols])
+        t1 = sa_schema.Table(source, m,
+                *[sa_schema.Column(n, NULLTYPE) for n in t1_cols],
+                schema=source_schema)
 
-        f = schema.ForeignKeyConstraint(local_cols,
-                                            ["%s.%s" % (referent, n)
+        tname = "%s.%s" % (referent_schema, referent) if referent_schema \
+                else referent
+        f = sa_schema.ForeignKeyConstraint(local_cols,
+                                            ["%s.%s" % (tname, n)
                                             for n in remote_cols],
                                             name=name,
                                             onupdate=onupdate,
@@ -75,38 +80,50 @@ class Operations(object):
 
         return f
 
-    def _unique_constraint(self, name, source, local_cols, **kw):
-        t = schema.Table(source, schema.MetaData(),
-                    *[schema.Column(n, NULLTYPE) for n in local_cols])
+    def _unique_constraint(self, name, source, local_cols, schema=None, **kw):
+        t = sa_schema.Table(source, sa_schema.MetaData(),
+                    *[sa_schema.Column(n, NULLTYPE) for n in local_cols],
+                    schema=schema)
         kw['name'] = name
-        uq = schema.UniqueConstraint(*[t.c[n] for n in local_cols], **kw)
+        uq = sa_schema.UniqueConstraint(*[t.c[n] for n in local_cols], **kw)
         # TODO: need event tests to ensure the event
         # is fired off here
         t.append_constraint(uq)
         return uq
 
-    def _check_constraint(self, name, source, condition, **kw):
-        t = schema.Table(source, schema.MetaData(),
-                    schema.Column('x', Integer))
-        ck = schema.CheckConstraint(condition, name=name, **kw)
+    def _check_constraint(self, name, source, condition, schema=None, **kw):
+        t = sa_schema.Table(source, sa_schema.MetaData(),
+                    sa_schema.Column('x', Integer), schema=schema)
+        ck = sa_schema.CheckConstraint(condition, name=name, **kw)
         t.append_constraint(ck)
         return ck
 
     def _table(self, name, *columns, **kw):
-        m = schema.MetaData()
-        t = schema.Table(name, m, *columns, **kw)
+        m = sa_schema.MetaData()
+        t = sa_schema.Table(name, m, *columns, **kw)
         for f in t.foreign_keys:
             self._ensure_table_for_fk(m, f)
         return t
 
     def _column(self, name, type_, **kw):
-        return schema.Column(name, type_, **kw)
+        return sa_schema.Column(name, type_, **kw)
 
-    def _index(self, name, tablename, columns, **kw):
-        t = schema.Table(tablename or 'no_table', schema.MetaData(),
-            *[schema.Column(n, NULLTYPE) for n in columns]
+    def _index(self, name, tablename, columns, schema=None, **kw):
+        t = sa_schema.Table(tablename or 'no_table', sa_schema.MetaData(),
+            *[sa_schema.Column(n, NULLTYPE) for n in columns],
+            schema=schema
         )
-        return schema.Index(name, *list(t.c), **kw)
+        return sa_schema.Index(name, *list(t.c), **kw)
+
+    def _parse_table_key(self, table_key):
+        if '.' in table_key:
+            tokens = table_key.split('.')
+            sname = ".".join(tokens[0:-1])
+            tname = tokens[-1]
+        else:
+            tname = table_key
+            sname = None
+        return (sname, tname)
 
     def _ensure_table_for_fk(self, metadata, fk):
         """create a placeholder Table object for the referent of a
@@ -115,19 +132,13 @@ class Operations(object):
         """
         if isinstance(fk._colspec, basestring):
             table_key, cname = fk._colspec.rsplit('.', 1)
-            if '.' in table_key:
-                tokens = table_key.split('.')
-                sname = ".".join(tokens[0:-1])
-                tname = tokens[-1]
-            else:
-                tname = table_key
-                sname = None
+            sname, tname = self._parse_table_key(table_key)
             if table_key not in metadata.tables:
-                rel_t = schema.Table(tname, metadata, schema=sname)
+                rel_t = sa_schema.Table(tname, metadata, schema=sname)
             else:
                 rel_t = metadata.tables[table_key]
             if cname not in rel_t.c:
-                rel_t.append_column(schema.Column(cname, NULLTYPE))
+                rel_t.append_column(sa_schema.Column(cname, NULLTYPE))
 
     def get_context(self):
         """Return the :class:`.MigrationContext` object that's
@@ -142,7 +153,7 @@ class Operations(object):
 
         :param old_table_name: old name.
         :param new_table_name: new name.
-        :param schema: Optional, name of schema to operate within.
+        :param schema: Optional schema name to operate within.
 
         """
         self.impl.rename_table(
@@ -160,7 +171,8 @@ class Operations(object):
                         existing_type=None,
                         existing_server_default=False,
                         existing_nullable=None,
-                        existing_autoincrement=None
+                        existing_autoincrement=None,
+                        schema=None
     ):
         """Issue an "alter column" instruction using the
         current migration context.
@@ -228,6 +240,10 @@ class Operations(object):
         :param existing_autoincrement: Optional; the existing autoincrement
          of the column.  Used for MySQL's system of altering a column
          that specifies ``AUTO_INCREMENT``.
+        :param schema: Optional schema name to operate within.
+
+         .. versionadded:: 0.4.0
+
         """
 
         compiler = self.impl.dialect.statement_compiler(
@@ -235,13 +251,14 @@ class Operations(object):
                             None
                         )
         def _count_constraint(constraint):
-            return not isinstance(constraint, schema.PrimaryKeyConstraint) and \
+            return not isinstance(constraint, sa_schema.PrimaryKeyConstraint) and \
                 (not constraint._create_rule or
                     constraint._create_rule(compiler))
 
         if existing_type and type_:
             t = self._table(table_name,
-                        schema.Column(column_name, existing_type)
+                        sa_schema.Column(column_name, existing_type),
+                        schema=schema
                     )
             for constraint in t.constraints:
                 if _count_constraint(constraint):
@@ -252,6 +269,7 @@ class Operations(object):
             server_default=server_default,
             name=name,
             type_=type_,
+            schema=schema,
             autoincrement=autoincrement,
             existing_type=existing_type,
             existing_server_default=existing_server_default,
@@ -260,12 +278,15 @@ class Operations(object):
         )
 
         if type_:
-            t = self._table(table_name, schema.Column(column_name, type_))
+            t = self._table(table_name,
+                        sa_schema.Column(column_name, type_),
+                        schema=schema
+                    )
             for constraint in t.constraints:
                 if _count_constraint(constraint):
                     self.impl.add_constraint(constraint)
 
-    def add_column(self, table_name, column):
+    def add_column(self, table_name, column, schema=None):
         """Issue an "add column" instruction using the current
         migration context.
 
@@ -308,16 +329,20 @@ class Operations(object):
         :param table_name: String name of the parent table.
         :param column: a :class:`sqlalchemy.schema.Column` object
          representing the new column.
+        :param schema: Optional schema name to operate within.
+
+         .. versionadded:: 0.4.0
 
         """
 
-        t = self._table(table_name, column)
+        t = self._table(table_name, column, schema=schema)
         self.impl.add_column(
             table_name,
-            column
+            column,
+            schema=schema
         )
         for constraint in t.constraints:
-            if not isinstance(constraint, schema.PrimaryKeyConstraint):
+            if not isinstance(constraint, sa_schema.PrimaryKeyConstraint):
                 self.impl.add_constraint(constraint)
 
     def drop_column(self, table_name, column_name, **kw):
@@ -330,6 +355,10 @@ class Operations(object):
 
         :param table_name: name of table
         :param column_name: name of column
+        :param schema: Optional schema name to operate within.
+
+         .. versionadded:: 0.4.0
+
         :param mssql_drop_check: Optional boolean.  When ``True``, on
          Microsoft SQL Server only, first
          drop the CHECK constraint on the column using a
@@ -353,7 +382,8 @@ class Operations(object):
 
 
     def create_foreign_key(self, name, source, referent, local_cols,
-                           remote_cols, onupdate=None, ondelete=None):
+                           remote_cols, onupdate=None, ondelete=None,
+                           source_schema=None, referent_schema=None):
         """Issue a "create foreign key" instruction using the
         current migration context.
 
@@ -379,10 +409,8 @@ class Operations(object):
          ``name`` here can be ``None``, as the event listener will
          apply the name to the constraint object when it is associated
          with the table.
-        :param source: String name of the source table.  Currently
-         there is no support for dotted schema names.
-        :param referent: String name of the destination table. Currently
-         there is no support for dotted schema names.
+        :param source: String name of the source table.
+        :param referent: String name of the destination table.
         :param local_cols: a list of string column names in the
          source table.
         :param remote_cols: a list of string column names in the
@@ -393,16 +421,21 @@ class Operations(object):
         :param ondelete: Optional string. If set, emit ON DELETE <value> when
          issuing DDL for this constraint. Typical values include CASCADE,
          DELETE and RESTRICT.
+        :param source_schema: Optional schema name of the source table.
+        :param referent_schema: Optional schema name of the destination table.
 
         """
 
         self.impl.add_constraint(
                     self._foreign_key_constraint(name, source, referent,
                             local_cols, remote_cols,
-                            onupdate=onupdate, ondelete=ondelete)
+                            onupdate=onupdate, ondelete=ondelete,
+                            source_schema=source_schema,
+                            referent_schema=referent_schema)
                 )
 
-    def create_unique_constraint(self, name, source, local_cols, **kw):
+    def create_unique_constraint(self, name, source, local_cols,
+                                 schema=None, **kw):
         """Issue a "create unique constraint" instruction using the
         current migration context.
 
@@ -426,23 +459,27 @@ class Operations(object):
          ``name`` here can be ``None``, as the event listener will
          apply the name to the constraint object when it is associated
          with the table.
-        :param source: String name of the source table.  Currently
-         there is no support for dotted schema names.
+        :param source: String name of the source table. Dotted schema names are
+         supported.
         :param local_cols: a list of string column names in the
          source table.
         :param deferrable: optional bool. If set, emit DEFERRABLE or NOT DEFERRABLE when
          issuing DDL for this constraint.
         :param initially: optional string. If set, emit INITIALLY <value> when issuing DDL
          for this constraint.
+        :param schema: Optional schema name to operate within.
+
+         .. versionadded:: 0.4.0
 
         """
 
         self.impl.add_constraint(
                     self._unique_constraint(name, source, local_cols,
-                        **kw)
+                        schema=schema, **kw)
                 )
 
-    def create_check_constraint(self, name, source, condition, **kw):
+    def create_check_constraint(self, name, source, condition,
+                                schema=None, **kw):
         """Issue a "create check constraint" instruction using the
         current migration context.
 
@@ -469,18 +506,20 @@ class Operations(object):
          ``name`` here can be ``None``, as the event listener will
          apply the name to the constraint object when it is associated
          with the table.
-        :param source: String name of the source table.  Currently
-         there is no support for dotted schema names.
+        :param source: String name of the source table.
         :param condition: SQL expression that's the condition of the constraint.
          Can be a string or SQLAlchemy expression language structure.
         :param deferrable: optional bool. If set, emit DEFERRABLE or NOT DEFERRABLE when
          issuing DDL for this constraint.
         :param initially: optional string. If set, emit INITIALLY <value> when issuing DDL
          for this constraint.
+        :param schema: Optional schema name to operate within.
+
+         ..versionadded:: 0.4.0
 
         """
         self.impl.add_constraint(
-            self._check_constraint(name, source, condition, **kw)
+            self._check_constraint(name, source, condition, schema=schema, **kw)
         )
 
     def create_table(self, name, *columns, **kw):
@@ -526,6 +565,7 @@ class Operations(object):
          ``after_create`` events when the table is being created.  In
          particular, the Postgresql ENUM type will emit a CREATE TYPE within
          these events.
+        :param schema: Optional schema name to operate within.
         :param \**kw: Other keyword arguments are passed to the underlying
          :class:`.Table` object created for the command.
 
@@ -534,7 +574,7 @@ class Operations(object):
             self._table(name, *columns, **kw)
         )
 
-    def drop_table(self, name):
+    def drop_table(self, name, **kw):
         """Issue a "drop table" instruction using the current
         migration context.
 
@@ -543,12 +583,20 @@ class Operations(object):
 
             drop_table("accounts")
 
+        :param name: Name of the table
+        :param schema: Optional schema name to operate within.
+
+         .. versionadded:: 0.4.0
+
+        :param \**kw: Other keyword arguments are passed to the underlying
+         :class:`.Table` object created for the command.
+
         """
         self.impl.drop_table(
-            self._table(name)
+            self._table(name, **kw)
         )
 
-    def create_index(self, name, tablename, *columns, **kw):
+    def create_index(self, name, tablename, columns, schema=None, **kw):
         """Issue a "create index" instruction using the current
         migration context.
 
@@ -557,13 +605,21 @@ class Operations(object):
             from alembic import op
             op.create_index('ik_test', 't1', ['foo', 'bar'])
 
+        :param name: name of the index.
+        :param tablename: name of the owning table.
+        :param columns: a list of string column names in the
+         table.
+        :param schema: Optional schema name to operate within.
+
+         .. versionadded:: 0.4.0
+
         """
 
         self.impl.create_index(
-            self._index(name, tablename, *columns, **kw)
+            self._index(name, tablename, columns, schema=schema, **kw)
         )
 
-    def drop_index(self, name, tablename=None):
+    def drop_index(self, name, tablename=None, schema=None):
         """Issue a "drop index" instruction using the current
         migration context.
 
@@ -572,15 +628,21 @@ class Operations(object):
 
             drop_index("accounts")
 
+        :param name: name of the index.
         :param tablename: name of the owning table.  Some
          backends such as Microsoft SQL Server require this.
+        :param schema: Optional schema name to operate within.
+
+         .. versionadded:: 0.4.0
 
         """
         # need a dummy column name here since SQLAlchemy
         # 0.7.6 and further raises on Index with no columns
-        self.impl.drop_index(self._index(name, tablename, ['x']))
+        self.impl.drop_index(
+            self._index(name, tablename, ['x'], schema=schema)
+        )
 
-    def drop_constraint(self, name, tablename, type=None):
+    def drop_constraint(self, name, tablename, type=None, schema=None):
         """Drop a constraint of the given name, typically via DROP CONSTRAINT.
 
         :param name: name of the constraint.
@@ -588,18 +650,22 @@ class Operations(object):
         :param type: optional, required on MySQL.  can be
          'foreignkey', 'primary', 'unique', or 'check'.
 
-        .. versionadded:: 0.3.6 'primary' qualfier to enable
-           dropping of MySQL primary key constraints.
+         .. versionadded:: 0.3.6 'primary' qualfier to enable
+            dropping of MySQL primary key constraints.
+
+        :param schema: Optional schema name to operate within.
+
+         .. versionadded:: 0.4.0
 
         """
-        t = self._table(tablename)
+        t = self._table(tablename, schema=schema)
         types = {
-            'foreignkey':lambda name:schema.ForeignKeyConstraint(
+            'foreignkey':lambda name:sa_schema.ForeignKeyConstraint(
                                 [], [], name=name),
-            'primary':schema.PrimaryKeyConstraint,
-            'unique':schema.UniqueConstraint,
-            'check':lambda name:schema.CheckConstraint("", name=name),
-            None:schema.Constraint
+            'primary':sa_schema.PrimaryKeyConstraint,
+            'unique':sa_schema.UniqueConstraint,
+            'check':lambda name:sa_schema.CheckConstraint("", name=name),
+            None:sa_schema.Constraint
         }
         try:
             const = types[type]
