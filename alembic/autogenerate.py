@@ -264,11 +264,11 @@ def _compare_columns(schema, tname, conn_table, metadata_table,
             metadata_col,
             col_diff, autogen_context
         )
-        _compare_nullable(schema, tname, colname,
-            conn_col,
-            metadata_col.nullable,
-            col_diff, autogen_context
-        )
+#        _compare_nullable(schema, tname, colname,
+#            conn_col,
+#            metadata_col.nullable,
+#            col_diff, autogen_context
+#        )
         _compare_server_default(schema, tname, colname,
             conn_col,
             metadata_col,
@@ -317,6 +317,8 @@ def _compare(c1, c2):
     r1 = _get_type(c1)
     r2 = _get_type(c2)
     if r1.upper() == 'BOOLEAN()' or r2.upper() == 'BOOLEAN()':
+        return False
+    if r1.upper() == 'MEDIUMTEXT()':
         return False
     else:
         return r1.upper() != r2.upper()
