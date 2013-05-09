@@ -1,7 +1,7 @@
 from alembic import util
 from alembic.ddl import impl
 from sqlalchemy.types import NULLTYPE, Integer
-from sqlalchemy import schema as sa_schema, sql
+from sqlalchemy import schema as sa_schema
 from contextlib import contextmanager
 import alembic
 
@@ -49,6 +49,17 @@ class Operations(object):
         alembic.op._install_proxy(op)
         yield op
         alembic.op._remove_proxy()
+
+
+    def _primary_key_constraint(self, name, table_name, cols, schema=None):
+        m = sa_schema.MetaData()
+        columns = [sa_schema.Column(n, NULLTYPE) for n in cols]
+        t1 = sa_schema.Table(table_name, m,
+                *columns,
+                schema=schema)
+        p = sa_schema.PrimaryKeyConstraint(*columns, name=name)
+        t1.append_constraint(p)
+        return p
 
     def _foreign_key_constraint(self, name, source, referent,
                                     local_cols, remote_cols,
@@ -113,7 +124,7 @@ class Operations(object):
             *[sa_schema.Column(n, NULLTYPE) for n in columns],
             schema=schema
         )
-        return sa_schema.Index(name, *list(t.c), **kw)
+        return sa_schema.Index(name, *[t.c[n] for n in columns], **kw)
 
     def _parse_table_key(self, table_key):
         if '.' in table_key:
@@ -162,10 +173,11 @@ class Operations(object):
             schema=schema
         )
 
+    @util._with_legacy_names([('name', 'new_column_name')])
     def alter_column(self, table_name, column_name,
                         nullable=None,
                         server_default=False,
-                        name=None,
+                        new_column_name=None,
                         type_=None,
                         autoincrement=None,
                         existing_type=None,
@@ -210,9 +222,15 @@ class Operations(object):
          or :class:`~sqlalchemy.schema.DefaultClause` to indicate
          an alteration to the column's default value.
          Set to ``None`` to have the default removed.
-        :param name: Optional; specify a string name here to
+        :param new_column_name: Optional; specify a string name here to
          indicate the new name within a column rename operation.
-        :param type_: Optional; a :class:`~sqlalchemy.types.TypeEngine`
+
+         .. versionchanged:: 0.5.0
+            The ``name`` parameter is now named ``new_column_name``.
+            The old name will continue to function for backwards
+            compatibility.
+
+        :param ``type_``: Optional; a :class:`~sqlalchemy.types.TypeEngine`
          type object to specify a change to the column's type.
          For SQLAlchemy types that also indicate a constraint (i.e.
          :class:`~sqlalchemy.types.Boolean`, :class:`~sqlalchemy.types.Enum`),
@@ -267,7 +285,7 @@ class Operations(object):
         self.impl.alter_column(table_name, column_name,
             nullable=nullable,
             server_default=server_default,
-            name=name,
+            name=new_column_name,
             type_=type_,
             schema=schema,
             autoincrement=autoincrement,
@@ -380,6 +398,46 @@ class Operations(object):
             **kw
         )
 
+
+    def create_primary_key(self, name, table_name, cols, schema=None):
+        """Issue a "create primary key" instruction using the current
+        migration context.
+
+        e.g.::
+
+            from alembic import op
+            op.create_primary_key(
+                        "pk_my_table", "my_table",
+                        ["id", "version"]
+                    )
+
+        This internally generates a :class:`~sqlalchemy.schema.Table` object
+        containing the necessary columns, then generates a new
+        :class:`~sqlalchemy.schema.PrimaryKeyConstraint`
+        object which it then associates with the :class:`~sqlalchemy.schema.Table`.
+        Any event listeners associated with this action will be fired
+        off normally.   The :class:`~sqlalchemy.schema.AddConstraint`
+        construct is ultimately used to generate the ALTER statement.
+
+        .. versionadded:: 0.5.0
+
+        :param name: Name of the primary key constraint.  The name is necessary
+         so that an ALTER statement can be emitted.  For setups that
+         use an automated naming scheme such as that described at
+         `NamingConventions <http://www.sqlalchemy.org/trac/wiki/UsageRecipes/NamingConventions>`_,
+         ``name`` here can be ``None``, as the event listener will
+         apply the name to the constraint object when it is associated
+         with the table.
+        :param table_name: String name of the target table.
+        :param cols: a list of string column names to be applied to the
+         primary key constraint.
+        :param schema: Optional schema name of the table.
+
+        """
+        self.impl.add_constraint(
+                    self._primary_key_constraint(name, table_name, cols,
+                                schema)
+                )
 
     def create_foreign_key(self, name, source, referent, local_cols,
                            remote_cols, onupdate=None, ondelete=None,
@@ -561,13 +619,9 @@ class Operations(object):
          the table, as well as optional :class:`~sqlalchemy.schema.Constraint`
          objects
          and :class:`~.sqlalchemy.schema.Index` objects.
-        :param emit_events: if ``True``, emit ``before_create`` and
-         ``after_create`` events when the table is being created.  In
-         particular, the Postgresql ENUM type will emit a CREATE TYPE within
-         these events.
         :param schema: Optional schema name to operate within.
         :param \**kw: Other keyword arguments are passed to the underlying
-         :class:`.Table` object created for the command.
+         :class:`sqlalchemy.schema.Table` object created for the command.
 
         """
         self.impl.create_table(
@@ -589,14 +643,14 @@ class Operations(object):
          .. versionadded:: 0.4.0
 
         :param \**kw: Other keyword arguments are passed to the underlying
-         :class:`.Table` object created for the command.
+         :class:`sqlalchemy.schema.Table` object created for the command.
 
         """
         self.impl.drop_table(
             self._table(name, **kw)
         )
 
-    def create_index(self, name, tablename, columns, schema=None, **kw):
+    def create_index(self, name, table_name, columns, schema=None, **kw):
         """Issue a "create index" instruction using the current
         migration context.
 
@@ -606,7 +660,13 @@ class Operations(object):
             op.create_index('ik_test', 't1', ['foo', 'bar'])
 
         :param name: name of the index.
-        :param tablename: name of the owning table.
+        :param table_name: name of the owning table.
+
+         .. versionchanged:: 0.5.0
+            The ``tablename`` parameter is now named ``table_name``.
+            As this is a positional argument, the old name is no
+            longer present.
+
         :param columns: a list of string column names in the
          table.
         :param schema: Optional schema name to operate within.
@@ -616,21 +676,27 @@ class Operations(object):
         """
 
         self.impl.create_index(
-            self._index(name, tablename, columns, schema=schema, **kw)
+            self._index(name, table_name, columns, schema=schema, **kw)
         )
 
-    def drop_index(self, name, tablename=None, schema=None):
+    @util._with_legacy_names([('tablename', 'table_name')])
+    def drop_index(self, name, table_name=None, schema=None):
         """Issue a "drop index" instruction using the current
         migration context.
-
 
         e.g.::
 
             drop_index("accounts")
 
         :param name: name of the index.
-        :param tablename: name of the owning table.  Some
+        :param table_name: name of the owning table.  Some
          backends such as Microsoft SQL Server require this.
+
+         .. versionchanged:: 0.5.0
+            The ``tablename`` parameter is now named ``table_name``.
+            The old name will continue to function for backwards
+            compatibility.
+
         :param schema: Optional schema name to operate within.
 
          .. versionadded:: 0.4.0
@@ -639,16 +705,27 @@ class Operations(object):
         # need a dummy column name here since SQLAlchemy
         # 0.7.6 and further raises on Index with no columns
         self.impl.drop_index(
-            self._index(name, tablename, ['x'], schema=schema)
+            self._index(name, table_name, ['x'], schema=schema)
         )
 
-    def drop_constraint(self, name, tablename, type=None, schema=None):
+    @util._with_legacy_names([("type", "type_")])
+    def drop_constraint(self, name, table_name, type_=None, schema=None):
         """Drop a constraint of the given name, typically via DROP CONSTRAINT.
 
         :param name: name of the constraint.
-        :param tablename: tablename.
-        :param type: optional, required on MySQL.  can be
+        :param table_name: table name.
+
+         .. versionchanged:: 0.5.0
+            The ``tablename`` parameter is now named ``table_name``.
+            As this is a positional argument, the old name is no
+            longer present.
+
+        :param ``type_``: optional, required on MySQL.  can be
          'foreignkey', 'primary', 'unique', or 'check'.
+
+         .. versionchanged:: 0.5.0
+            The ``type`` parameter is now named ``type_``.  The old name
+            ``type`` will remain for backwards compatibility.
 
          .. versionadded:: 0.3.6 'primary' qualfier to enable
             dropping of MySQL primary key constraints.
@@ -658,17 +735,18 @@ class Operations(object):
          .. versionadded:: 0.4.0
 
         """
-        t = self._table(tablename, schema=schema)
+
+        t = self._table(table_name, schema=schema)
         types = {
-            'foreignkey':lambda name:sa_schema.ForeignKeyConstraint(
+            'foreignkey': lambda name: sa_schema.ForeignKeyConstraint(
                                 [], [], name=name),
-            'primary':sa_schema.PrimaryKeyConstraint,
-            'unique':sa_schema.UniqueConstraint,
-            'check':lambda name:sa_schema.CheckConstraint("", name=name),
-            None:sa_schema.Constraint
+            'primary': sa_schema.PrimaryKeyConstraint,
+            'unique': sa_schema.UniqueConstraint,
+            'check': lambda name: sa_schema.CheckConstraint("", name=name),
+            None: sa_schema.Constraint
         }
         try:
-            const = types[type]
+            const = types[type_]
         except KeyError:
             raise TypeError("'type' can be one of %s" %
                         ", ".join(sorted(repr(x) for x in types)))
@@ -738,7 +816,7 @@ class Operations(object):
          numerics should be supported.   Other types like boolean,
          dates, etc. may or may not be supported yet by various
          backends.
-        :param type_: optional - a :class:`sqlalchemy.types.TypeEngine`
+        :param ``type_``: optional - a :class:`sqlalchemy.types.TypeEngine`
          subclass stating the type of this value.  In SQLAlchemy
          expressions, this is usually derived automatically
          from the Python type of the value itself, as well as
@@ -807,7 +885,7 @@ class Operations(object):
 
         :param execution_options: Optional dictionary of
          execution options, will be passed to
-         :meth:`sqlalchemy.engine.base.Connection.execution_options`.
+         :meth:`sqlalchemy.engine.Connection.execution_options`.
         """
         self.migration_context.impl.execute(sql,
                     execution_options=execution_options)
@@ -816,7 +894,7 @@ class Operations(object):
         """Return the current 'bind'.
 
         Under normal circumstances, this is the
-        :class:`~sqlalchemy.engine.base.Connection` currently being used
+        :class:`~sqlalchemy.engine.Connection` currently being used
         to emit SQL to the database.
 
         In a SQL script context, this value is ``None``. [TODO: verify this]

@@ -3,9 +3,14 @@
 from tests import op_fixture, assert_raises_message
 from alembic import op
 from sqlalchemy import Integer, Column, ForeignKey, \
-            UniqueConstraint, Table, MetaData, String,\
-            Boolean
-from sqlalchemy.sql import table, column, func
+            Table, String, Boolean
+from sqlalchemy.sql import column, func
+
+from sqlalchemy import event
+@event.listens_for(Table, "after_parent_attach")
+def _add_cols(table, metadata):
+    if table.name == "tbl_with_auto_appended_column":
+        table.append_column(Column('bat', Integer))
 
 
 def test_rename_table():
@@ -17,6 +22,16 @@ def test_rename_table_schema():
     context = op_fixture()
     op.rename_table('t1', 't2', schema="foo")
     context.assert_("ALTER TABLE foo.t1 RENAME TO foo.t2")
+
+def test_rename_table_postgresql():
+    context = op_fixture("postgresql")
+    op.rename_table('t1', 't2')
+    context.assert_("ALTER TABLE t1 RENAME TO t2")
+
+def test_rename_table_schema_postgresql():
+    context = op_fixture("postgresql")
+    op.rename_table('t1', 't2', schema="foo")
+    context.assert_("ALTER TABLE foo.t1 RENAME TO t2")
 
 def test_add_column():
     context = op_fixture()
@@ -169,14 +184,14 @@ def test_alter_column_schema_not_nullable():
 
 def test_alter_column_rename():
     context = op_fixture()
-    op.alter_column("t", "c", name="x")
+    op.alter_column("t", "c", new_column_name="x")
     context.assert_(
         "ALTER TABLE t RENAME c TO x"
     )
 
 def test_alter_column_schema_rename():
     context = op_fixture()
-    op.alter_column("t", "c", name="x", schema='foo')
+    op.alter_column("t", "c", new_column_name="x", schema='foo')
     context.assert_(
         "ALTER TABLE foo.t RENAME c TO x"
     )
@@ -333,7 +348,7 @@ def test_add_foreign_key_schema():
     context = op_fixture()
     op.create_foreign_key('fk_test', 't1', 't2',
                     ['foo', 'bar'], ['bat', 'hoho'],
-                   source_schema='foo2', referent_schema='bar2')
+                    source_schema='foo2', referent_schema='bar2')
     context.assert_(
         "ALTER TABLE foo2.t1 ADD CONSTRAINT fk_test FOREIGN KEY(foo, bar) "
             "REFERENCES bar2.t2 (bat, hoho)"
@@ -365,6 +380,20 @@ def test_add_foreign_key_self_referential():
     context.assert_(
         "ALTER TABLE t1 ADD CONSTRAINT fk_test "
         "FOREIGN KEY(foo) REFERENCES t1 (bar)"
+    )
+
+def test_add_primary_key_constraint():
+    context = op_fixture()
+    op.create_primary_key("pk_test", "t1", ["foo", "bar"])
+    context.assert_(
+        "ALTER TABLE t1 ADD CONSTRAINT pk_test PRIMARY KEY (foo, bar)"
+    )
+
+def test_add_primary_key_constraint_schema():
+    context = op_fixture()
+    op.create_primary_key("pk_test", "t1", ["foo"], schema="bar")
+    context.assert_(
+        "ALTER TABLE bar.t1 ADD CONSTRAINT pk_test PRIMARY KEY (foo)"
     )
 
 def test_add_check_constraint():
@@ -406,21 +435,6 @@ def test_add_unique_constraint_schema():
         "ALTER TABLE foo.t1 ADD CONSTRAINT uk_test UNIQUE (foo, bar)"
     )
 
-def test_add_unique_constraint_auto_cols():
-    context = op_fixture()
-    from sqlalchemy import event, DateTime
-
-    @event.listens_for(Table, "after_parent_attach")
-    def _table_standard_cols(table, metadata):
-        table.append_column(Column('created_at', DateTime))
-
-    try:
-        op.create_unique_constraint('uk_test', 't1', ['foo', 'bar'])
-        context.assert_(
-            "ALTER TABLE t1 ADD CONSTRAINT uk_test UNIQUE (foo, bar)"
-        )
-    finally:
-        Table.dispatch._clear()
 
 def test_drop_constraint():
     context = op_fixture()
@@ -442,6 +456,25 @@ def test_create_index():
     context.assert_(
         "CREATE INDEX ik_test ON t1 (foo, bar)"
     )
+
+
+def test_create_index_table_col_event():
+    context = op_fixture()
+
+    op.create_index('ik_test', 'tbl_with_auto_appended_column', ['foo', 'bar'])
+    context.assert_(
+        "CREATE INDEX ik_test ON tbl_with_auto_appended_column (foo, bar)"
+    )
+
+def test_add_unique_constraint_col_event():
+    context = op_fixture()
+    op.create_unique_constraint('ik_test',
+            'tbl_with_auto_appended_column', ['foo', 'bar'])
+    context.assert_(
+        "ALTER TABLE tbl_with_auto_appended_column "
+        "ADD CONSTRAINT ik_test UNIQUE (foo, bar)"
+    )
+
 
 def test_create_index_schema():
     context = op_fixture()
@@ -509,6 +542,18 @@ def test_create_table_fk_and_schema():
             "FOREIGN KEY(foo_id) REFERENCES foo (id))"
     )
 
+def test_create_table_no_pk():
+    context = op_fixture()
+    op.create_table(
+        "some_table",
+        Column('x', Integer),
+        Column('y', Integer),
+        Column('z', Integer),
+    )
+    context.assert_(
+        "CREATE TABLE some_table (x INTEGER, y INTEGER, z INTEGER)"
+    )
+
 def test_create_table_two_fk():
     context = op_fixture()
     op.create_table(
@@ -538,13 +583,13 @@ def test_inline_literal():
     )
     op.execute(
         account.update().\
-            where(account.c.name==op.inline_literal('account 1')).\
-            values({'name':op.inline_literal('account 2')})
+            where(account.c.name == op.inline_literal('account 1')).\
+            values({'name': op.inline_literal('account 2')})
             )
     op.execute(
         account.update().\
-            where(account.c.id==op.inline_literal(1)).\
-            values({'id':op.inline_literal(2)})
+            where(account.c.id == op.inline_literal(1)).\
+            values({'id': op.inline_literal(2)})
             )
     context.assert_(
         "UPDATE account SET name='account 2' WHERE account.name = 'account 1'",
@@ -562,3 +607,36 @@ def test_cant_op():
         "Try placing this code inside a callable.",
         op.inline_literal, "asdf"
     )
+
+
+def test_naming_changes():
+    context = op_fixture()
+    op.alter_column("t", "c", name="x")
+    context.assert_("ALTER TABLE t RENAME c TO x")
+
+    context = op_fixture()
+    op.alter_column("t", "c", new_column_name="x")
+    context.assert_("ALTER TABLE t RENAME c TO x")
+
+    context = op_fixture('mssql')
+    op.drop_index('ik_test', tablename='t1')
+    context.assert_("DROP INDEX [t1].ik_test")
+
+    context = op_fixture('mssql')
+    op.drop_index('ik_test', table_name='t1')
+    context.assert_("DROP INDEX [t1].ik_test")
+
+    context = op_fixture('mysql')
+    op.drop_constraint("f1", "t1", type="foreignkey")
+    context.assert_("ALTER TABLE t1 DROP FOREIGN KEY f1")
+
+    context = op_fixture('mysql')
+    op.drop_constraint("f1", "t1", type_="foreignkey")
+    context.assert_("ALTER TABLE t1 DROP FOREIGN KEY f1")
+
+    assert_raises_message(
+        TypeError,
+        "Unknown arguments: badarg2, badarg1",
+        op.alter_column, "t", "c", badarg1="x", badarg2="y"
+    )
+

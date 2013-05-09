@@ -1,10 +1,10 @@
 from alembic import util
-from sqlalchemy import MetaData, Table, Column, String, literal_column, \
-    text
+from sqlalchemy import MetaData, Table, Column, String, literal_column
 from sqlalchemy import create_engine
 from alembic import ddl
 import sys
 from sqlalchemy.engine import url as sqla_url
+import codecs
 
 import logging
 log = logging.getLogger(__name__)
@@ -59,8 +59,8 @@ class MigrationContext(object):
         self.dialect = dialect
         self.script = opts.get('script')
 
-        as_sql=opts.get('as_sql', False)
-        transactional_ddl=opts.get("transactional_ddl")
+        as_sql = opts.get('as_sql', False)
+        transactional_ddl = opts.get("transactional_ddl")
 
         if as_sql:
             self.connection = self._stdout_connection(connection)
@@ -70,16 +70,21 @@ class MigrationContext(object):
         self._migrations_fn = opts.get('fn')
         self.as_sql = as_sql
         self.output_buffer = opts.get("output_buffer", sys.stdout)
+        if opts.get('output_encoding'):
+            self.output_buffer = codecs.getwriter(
+                                    opts['output_encoding']
+                                )(self.output_buffer)
 
         self._user_compare_type = opts.get('compare_type', False)
         self._user_compare_server_default = opts.get(
                                             'compare_server_default',
                                             False)
-
         version_table = opts.get('version_table', 'alembic_version')
+        version_table_schema = opts.get('version_table_schema', None)
         self._version = Table(
             version_table, MetaData(),
-            Column('version_num', String(32), nullable=False))
+            Column('version_num', String(32), nullable=False),
+            schema=version_table_schema)
 
         self._start_from_rev = opts.get("starting_rev")
         self.impl = ddl.DefaultImpl.get_by_dialect(dialect)(
@@ -107,7 +112,7 @@ class MigrationContext(object):
         This is a factory method usually called
         by :meth:`.EnvironmentContext.configure`.
 
-        :param connection: a :class:`~sqlalchemy.engine.base.Connection`
+        :param connection: a :class:`~sqlalchemy.engine.Connection`
          to use for SQL execution in "online" mode.  When present,
          is also used to determine the type of dialect in use.
         :param url: a string database url, or a
@@ -195,14 +200,18 @@ class MigrationContext(object):
         """
         current_rev = rev = False
         self.impl.start_migrations()
-        for change, prev_rev, rev in self._migrations_fn(
-                                        self.get_current_revision(),
-                                        self):
+        for change, prev_rev, rev, doc in self._migrations_fn(
+                                            self.get_current_revision(),
+                                            self):
             if current_rev is False:
                 current_rev = prev_rev
                 if self.as_sql and not current_rev:
                     self._version.create(self.connection)
-            log.info("Running %s %s -> %s", change.__name__, prev_rev, rev)
+            if doc:
+                log.info("Running %s %s -> %s, %s", change.__name__, prev_rev,
+                    rev, doc)
+            else:
+                log.info("Running %s %s -> %s", change.__name__, prev_rev, rev)
             if self.as_sql:
                 self.impl.static_output(
                         "-- Running %s %s -> %s" %
@@ -243,7 +252,7 @@ class MigrationContext(object):
         """Return the current "bind".
 
         In online mode, this is an instance of
-        :class:`sqlalchemy.engine.base.Connection`, and is suitable
+        :class:`sqlalchemy.engine.Connection`, and is suitable
         for ad-hoc execution of any kind of usage described
         in :ref:`sqlexpression_toplevel` as well as
         for usage with the :meth:`sqlalchemy.schema.Table.create`

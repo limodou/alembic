@@ -1,10 +1,9 @@
 from __future__ import with_statement
 
-from sqlalchemy.engine import url, default
+from sqlalchemy.engine import default
 import shutil
 import os
-import itertools
-from sqlalchemy import create_engine, text, MetaData
+from sqlalchemy import create_engine, text
 from alembic import util
 from alembic.migration import MigrationContext
 from alembic.environment import EnvironmentContext
@@ -12,14 +11,12 @@ import re
 import alembic
 from alembic.operations import Operations
 from alembic.script import ScriptDirectory, Script
-from alembic import ddl
 import StringIO
 from alembic.ddl.impl import _impls
 import ConfigParser
 from nose import SkipTest
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.util import decorator
-import shutil
 import textwrap
 
 staging_directory = os.path.join(os.path.dirname(__file__), 'scratch')
@@ -52,7 +49,7 @@ def db_for_dialect(name):
         except ConfigParser.NoOptionError:
             raise SkipTest("No dialect %r in test.cfg" % name)
         try:
-            eng = create_engine(cfg) #, echo=True)
+            eng = create_engine(cfg)
         except ImportError, er1:
             raise SkipTest("Can't import DBAPI: %s" % er1)
         try:
@@ -66,6 +63,12 @@ def db_for_dialect(name):
 def requires_07(fn, *arg, **kw):
     if not util.sqla_07:
         raise SkipTest("SQLAlchemy 0.7 required")
+    return fn(*arg, **kw)
+
+@decorator
+def requires_08(fn, *arg, **kw):
+    if not util.sqla_08:
+        raise SkipTest("SQLAlchemy 0.8.0b2 or greater required")
     return fn(*arg, **kw)
 
 _dialects = {}
@@ -103,7 +106,7 @@ def capture_context_buffer(**kw):
             return buf
 
         def __exit__(self, *arg, **kwarg):
-            print buf.getvalue()
+            #print(buf.getvalue())
             EnvironmentContext._default_opts = None
 
     return capture()

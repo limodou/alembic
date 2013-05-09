@@ -1,6 +1,6 @@
 from alembic.script import ScriptDirectory
 from alembic.environment import EnvironmentContext
-from alembic import util, ddl, autogenerate as autogen
+from alembic import util, autogenerate as autogen
 import os
 
 def list_templates(config):
@@ -76,7 +76,6 @@ def revision(config, message=None, autogenerate=False, sql=False):
 
     if autogenerate:
         environment = True
-        util.requires_07("autogenerate")
         def retrieve_migrations(rev, context):
             if script.get_revision(rev) is not script.get_revision("head"):
                 raise util.CommandError("Target database is not up to date.")
@@ -132,6 +131,8 @@ def downgrade(config, revision, sql=False, tag=None):
         if not sql:
             raise util.CommandError("Range revision not allowed")
         starting_rev, revision = revision.split(':', 2)
+    elif sql:
+        raise util.CommandError("downgrade with --sql requires <fromrev>:<torev>")
 
     def downgrade(rev, context):
         return script._downgrade_revs(revision, rev)
@@ -168,15 +169,23 @@ def branches(config):
                     script.get_revision(rev)
                 )
 
-def current(config):
+def current(config, head_only=False):
     """Display the current revision for each database."""
 
     script = ScriptDirectory.from_config(config)
     def display_version(rev, context):
-        config.print_stdout("Current revision for %s: %s",
-                            util.obfuscate_url_pw(
-                                context.connection.engine.url),
-                            script.get_revision(rev))
+        rev = script.get_revision(rev)
+
+        if head_only:
+            config.print_stdout("%s%s" % (
+                rev.revision if rev else None,
+                " (head)" if rev and rev.is_head else ""))
+
+        else:
+            config.print_stdout("Current revision for %s: %s",
+                                util.obfuscate_url_pw(
+                                    context.connection.engine.url),
+                                rev)
         return []
 
     with EnvironmentContext(
@@ -218,5 +227,3 @@ def splice(config, parent, child):
 
     """
     raise NotImplementedError()
-
-

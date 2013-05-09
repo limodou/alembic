@@ -11,12 +11,13 @@
 # All configuration values have a default; values that are commented out
 # serve to show the default.
 
-import sys, os
+import sys
+import os
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-#sys.path.append(os.path.abspath('.'))
+sys.path.append(os.path.abspath('.'))
 
 # If your extensions are in another directory, add it here. If the directory
 # is relative to the documentation root, use os.path.abspath to make it
@@ -29,7 +30,14 @@ import alembic
 
 # Add any Sphinx extension module names here, as strings. They can be extensions
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
-extensions = ['sphinx.ext.autodoc', 'sphinx.ext.intersphinx']
+extensions = ['sphinx.ext.autodoc', 'sphinx.ext.intersphinx',
+                'ext.changelog']
+
+# tags to sort on inside of sections
+changelog_sections = ["feature", "bug", "moved", "changed", "removed"]
+
+changelog_render_ticket = "https://bitbucket.org/zzzeek/alembic/issue/%s/"
+changelog_render_pullreq = "https://bitbucket.org/zzzeek/alembic/pull-request/%s"
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -47,7 +55,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'Alembic'
-copyright = u'2010-2012, Mike Bayer'
+copyright = u'2010-2013, Mike Bayer'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -209,5 +217,5 @@ latex_documents = [
 autoclass_content = "both"
 
 intersphinx_mapping = {
-    'sqla':('http://www.sqlalchemy.org/docs/', None), 
+    'sqla':('http://www.sqlalchemy.org/docs/', None),
 }

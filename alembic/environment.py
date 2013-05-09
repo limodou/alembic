@@ -212,6 +212,7 @@ class EnvironmentContext(object):
             include_schemas=False,
             compare_type=False,
             compare_server_default=False,
+            render_item=None,
             upgrade_token="upgrades",
             downgrade_token="downgrades",
             alembic_module_prefix="op.",
@@ -237,18 +238,18 @@ class EnvironmentContext(object):
         If the :meth:`.is_offline_mode` function returns ``True``,
         then no connection is needed here.  Otherwise, the
         ``connection`` parameter should be present as an
-        instance of :class:`sqlalchemy.engine.base.Connection`.
+        instance of :class:`sqlalchemy.engine.Connection`.
 
         This function is typically called from the ``env.py``
         script within a migration environment.  It can be called
         multiple times for an invocation.  The most recent
-        :class:`~sqlalchemy.engine.base.Connection`
+        :class:`~sqlalchemy.engine.Connection`
         for which it was called is the one that will be operated upon
         by the next call to :meth:`.run_migrations`.
 
         General parameters:
 
-        :param connection: a :class:`~sqlalchemy.engine.base.Connection`
+        :param connection: a :class:`~sqlalchemy.engine.Connection`
          to use
          for SQL execution in "online" mode.  When present, is also
          used to determine the type of dialect in use.
@@ -272,6 +273,11 @@ class EnvironmentContext(object):
          the :class:`.Config`
          object.  The value here overrides that of the :class:`.Config`
          object.
+        :param output_encoding: when using ``--sql`` to generate SQL
+         scripts, apply this encoding to the string output.
+
+         .. versionadded:: 0.5.0
+
         :param starting_rev: Override the "starting revision" argument
          when using ``--sql`` mode.
         :param tag: a string tag for usage by custom ``env.py`` scripts.
@@ -281,9 +287,16 @@ class EnvironmentContext(object):
          running the "revision" command.   Note that the script environment
          is only run within the "revision" command if the --autogenerate
          option is used, or if the option "revision_environment=true"
-         is present in the alembic.ini file.  New in 0.3.3.
+         is present in the alembic.ini file. 
+
+         .. versionadded:: 0.3.3
+
         :param version_table: The name of the Alembic version table.
          The default is ``'alembic_version'``.
+        :param version_table_schema: Optional schema to place version
+         table within.
+
+         .. versionadded:: 0.5.0
 
         Parameters specific to the autogenerate feature, when
         ``alembic revision`` is run with the ``--autogenerate`` feature:
@@ -293,7 +306,7 @@ class EnvironmentContext(object):
          will be consulted during autogeneration.  The tables present
          will be compared against
          what is locally available on the target
-         :class:`~sqlalchemy.engine.base.Connection`
+         :class:`~sqlalchemy.engine.Connection`
          to produce candidate upgrade/downgrade operations.
 
         :param compare_type: Indicates type comparison behavior during
@@ -387,6 +400,33 @@ class EnvironmentContext(object):
          .. versionchanged:: 0.4.0  the ``include_symbol`` callable must now
             also accept a "schema" argument, which may be None.
 
+        :param render_item: Callable that can be used to override how
+         any schema item, i.e. column, constraint, type,
+         etc., is rendered for autogenerate.  The callable receives a
+         string describing the type of object, the object, and
+         the autogen context.  If it returns False, the
+         default rendering method will be used.  If it returns None,
+         the item will not be rendered in the context of a Table
+         construct, that is, can be used to skip columns or constraints
+         within op.create_table()::
+
+            def my_render_column(type_, col, autogen_context):
+                if type_ == "column" and isinstance(col, MySpecialCol):
+                    return repr(col)
+                else:
+                    return False
+
+            context.configure(
+                # ...
+                render_item = my_render_column
+            )
+
+         Available values for the type string include: ``column``,
+         ``primary_key``, ``foreign_key``, ``unique``, ``check``,
+         ``type``, ``server_default``.
+
+         .. versionadded:: 0.5.0
+
         :param upgrade_token: When autogenerate completes, the text of the
          candidate upgrade operations will be present in this template
          variable when ``script.py.mako`` is rendered.  Defaults to
@@ -456,6 +496,8 @@ class EnvironmentContext(object):
         opts['downgrade_token'] = downgrade_token
         opts['sqlalchemy_module_prefix'] = sqlalchemy_module_prefix
         opts['alembic_module_prefix'] = alembic_module_prefix
+        if render_item is not None:
+            opts['render_item'] = render_item
         if compare_type is not None:
             opts['compare_type'] = compare_type
         if compare_server_default is not None:
@@ -547,9 +589,9 @@ class EnvironmentContext(object):
           the output stream, as rendered by the
           target backend (e.g. SQL Server would
           emit ``BEGIN TRANSACTION``).
-        * Otherwise, calls :meth:`sqlalchemy.engine.base.Connection.begin`
+        * Otherwise, calls :meth:`sqlalchemy.engine.Connection.begin`
           on the current online connection, which
-          returns a :class:`sqlalchemy.engine.base.Transaction`
+          returns a :class:`sqlalchemy.engine.Transaction`
           object.  This object demarcates a real
           transaction and is itself a context manager,
           which will roll back if an exception
@@ -557,7 +599,7 @@ class EnvironmentContext(object):
 
         Note that a custom ``env.py`` script which
         has more specific transactional needs can of course
-        manipulate the :class:`~sqlalchemy.engine.base.Connection`
+        manipulate the :class:`~sqlalchemy.engine.Connection`
         directly to produce transactional state in "online"
         mode.
 
@@ -593,7 +635,7 @@ class EnvironmentContext(object):
         """Return the current 'bind'.
 
         In "online" mode, this is the
-        :class:`sqlalchemy.engine.base.Connection` currently being used
+        :class:`sqlalchemy.engine.Connection` currently being used
         to emit SQL to the database.
 
         This function requires that a :class:`.MigrationContext`

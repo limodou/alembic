@@ -189,6 +189,7 @@ def _produce_net_changes(connection, metadata, diffs, autogen_context,
 
 def _compare_tables(conn_table_names, metadata_table_names,
                     inspector, metadata, diffs, autogen_context):
+
     for s, tname in metadata_table_names.difference(conn_table_names):
         name = '%s.%s' % (s, tname) if s else tname
         diffs.append(("add_table", metadata.tables[name]))
@@ -221,7 +222,7 @@ def _compare_tables(conn_table_names, metadata_table_names,
         _compare_columns(s, tname,
                 conn_column_info[(s, tname)],
                 metadata.tables[name],
-                diffs, autogen_context)
+                diffs, autogen_context, inspector)
 
     # TODO:
     # index add/drop
@@ -232,7 +233,7 @@ def _compare_tables(conn_table_names, metadata_table_names,
 # element comparison
 
 def _compare_columns(schema, tname, conn_table, metadata_table,
-                                diffs, autogen_context):
+                                diffs, autogen_context, inspector):
     name = '%s.%s' % (schema, tname) if schema else tname
     metadata_cols_by_name = dict((c.name, c) for c in metadata_table.c)
     conn_col_names = set(conn_table)
@@ -256,7 +257,7 @@ def _compare_columns(schema, tname, conn_table, metadata_table,
         log.info("Detected removed column '%s.%s'", name, cname)
 
     for colname in metadata_col_names.intersection(conn_col_names):
-        metadata_col = metadata_table.c[colname]
+        metadata_col = metadata_cols_by_name[colname]
         conn_col = conn_table[colname]
         col_diff = []
         _compare_type(schema, tname, colname,
@@ -276,7 +277,52 @@ def _compare_columns(schema, tname, conn_table, metadata_table,
         )
         if col_diff:
             diffs.append(col_diff)
-
+            
+    #compare index
+    conn_indexes = inspector.get_indexes(tname)
+    
+    m_indexes = {}
+    m_keys = set()
+    c_indexes = {}
+    c_keys = set()
+    
+    for i in metadata_table.indexes:
+        m_indexes[i.name] = {'name':i.name, 'table':tname, 'unique':i.unique, 'column_names': [y.name for y in i.columns]}
+        m_keys.add(i.name)
+        
+    for i in conn_indexes:
+        c_indexes[i['name']] = {'name':i['name'], 'table':tname, 'unique':i['unique'], 'column_names': i['column_names']}
+        c_keys.add(i['name'])
+    
+    diff_add = m_keys - c_keys
+    if diff_add:
+        for x in diff_add:
+            diffs.append(("add_index", m_indexes[x]))
+            log.info("Detected add index '%s on %s(%s)'" % (x, tname, ','.join(["%r" % y for y in m_indexes[x]['column_names']])))
+            
+    diff_del = c_keys - m_keys
+    if diff_del:
+        for x in diff_del:
+            diffs.append(("remove_index", c_indexes[x]))
+            log.info("Detected remove index '%s on %s'" % (x, tname))
+            
+    diff_change = m_keys & c_keys
+    if diff_change:
+        for x in diff_change:
+            a = m_indexes[x]
+            b = c_indexes[x]
+            
+            if a != b:
+                diffs.append(("remove_index", b))
+                diffs.append(("add_index", a))
+                
+                d = ''
+                if a['unique'] != b['unique']:
+                    d += (' unique=%r' % a['unique']) + ' to ' + ('unique=%r' % b['unique'])
+                if a['column_names'] != b['column_names']:
+                    d += ' columns %r to %r' % (a['column_names'], b['column_names'])
+                log.info("Detected change index '%s on %s changes as: %s'" % (x, tname, d))
+                
 def _compare_nullable(schema, tname, cname, conn_col,
                             metadata_col_nullable, diffs,
                             autogen_context):
@@ -395,6 +441,7 @@ def _produce_upgrade_commands(diffs, autogen_context):
         buf.append(_invoke_command("upgrade", diff, autogen_context))
     if not buf:
         buf = ["pass"]
+
     return "\n".join(buf)
 
 def _produce_downgrade_commands(diffs, autogen_context):
@@ -420,6 +467,7 @@ def _invoke_adddrop_command(updown, args, autogen_context):
     _commands = {
         "table": (_drop_table, _add_table),
         "column": (_drop_column, _add_column),
+        "index": (_drop_index, _add_index),
     }
 
     cmd_callables = _commands[cmd_type]
@@ -471,7 +519,9 @@ def _add_table(table, autogen_context):
         'tablename': table.name,
         'prefix': _alembic_autogenerate_prefix(autogen_context),
         'args': ',\n'.join(
-            [_render_column(col, autogen_context) for col in table.c] +
+            [col for col in
+                [_render_column(col, autogen_context) for col in table.c]
+            if col] +
             sorted([rcons for rcons in
                 [_render_constraint(cons, autogen_context) for cons in
                     table.constraints]
@@ -479,9 +529,15 @@ def _add_table(table, autogen_context):
             ])
         )
     }
+    
     if table.schema:
         text += ",\nschema=%r" % table.schema
+    for k in sorted(table.kwargs):
+        text += ",\n%s=%r" % (k.replace(" ", "_"), table.kwargs[k])
     text += "\n)"
+    
+#    print text
+#    raise Exception
     return text
 
 def _drop_table(table, autogen_context):
@@ -494,13 +550,26 @@ def _drop_table(table, autogen_context):
     text += ")"
     return text
 
+def _add_index(index, autogen_context):
+    #process indexes by limodou 2013/05/09
+    text = "op.create_index('%(name)s', '%(table)s', %(columns)s, unique=%(unique)r)" % {
+        'name':index['name'],
+        'table':index['table'],
+        'columns':[str(x) for x in index['column_names']],
+        'unique': index['unique']
+    }
+    return text
+    
+def _drop_index(index, autogen_context):
+    text = "op.drop_index('%s', '%s')" % (index['name'], index['table'])
+    return text
+    
 def _add_column(schema, tname, column, autogen_context):
     text = "%(prefix)sadd_column(%(tname)r, %(column)s" % {
             "prefix": _alembic_autogenerate_prefix(autogen_context),
             "tname": tname,
             "column": _render_column(column, autogen_context)
             }
-
     if schema:
         text += ", schema=%r" % schema
     text += ")"
@@ -536,9 +605,10 @@ def _modify_col(tname, cname,
     text += ",\n%sexisting_type=%s" % (indent,
                     _repr_type(sqla_prefix, existing_type, autogen_context))
     if server_default is not False:
-        text += ",\n%sserver_default=%s" % (indent,
-                        _render_server_default(
-                                server_default, autogen_context),)
+        rendered = _render_server_default(
+                                server_default, autogen_context)
+        text += ",\n%sserver_default=%s" % (indent, rendered)
+
     if type_ is not None:
         text += ",\n%stype_=%s" % (indent,
                         _repr_type(sqla_prefix, type_, autogen_context))
@@ -549,12 +619,11 @@ def _modify_col(tname, cname,
         text += ",\n%sexisting_nullable=%r" % (
                         indent, existing_nullable)
     if existing_server_default:
-        text += ",\n%sexisting_server_default=%s" % (
-                        indent,
-                        _render_server_default(
+        rendered = _render_server_default(
                             existing_server_default,
-                            autogen_context),
-                    )
+                            autogen_context)
+        text += ",\n%sexisting_server_default=%s" % (
+                        indent, rendered)
     if schema:
         text += ",\n%sschema=%r" % (indent, schema)
     text += ")"
@@ -566,13 +635,33 @@ def _sqlalchemy_autogenerate_prefix(autogen_context):
 def _alembic_autogenerate_prefix(autogen_context):
     return autogen_context['opts']['alembic_module_prefix'] or ''
 
+
+def _user_defined_render(type_, object_, autogen_context):
+    if 'opts' in autogen_context and \
+            'render_item' in autogen_context['opts']:
+        render = autogen_context['opts']['render_item']
+        if render:
+            rendered = render(type_, object_, autogen_context)
+            if rendered is not False:
+                return rendered
+    return False
+
 def _render_column(column, autogen_context):
+    rendered = _user_defined_render("column", column, autogen_context)
+    if rendered is not False:
+        return rendered
+
     opts = []
     if column.server_default:
-        opts.append(("server_default",
-                    _render_server_default(
+        rendered = _render_server_default(
                             column.server_default, autogen_context
-                    )))
+                    )
+        if rendered:
+            opts.append(("server_default", rendered))
+
+    if not column.autoincrement:
+        opts.append(("autoincrement", column.autoincrement))
+
     if column.nullable is not None:
         opts.append(("nullable", column.nullable))
 
@@ -586,6 +675,10 @@ def _render_column(column, autogen_context):
     }
 
 def _render_server_default(default, autogen_context):
+    rendered = _user_defined_render("server_default", default, autogen_context)
+    if rendered is not False:
+        return rendered
+
     if isinstance(default, sa_schema.DefaultClause):
         if isinstance(default.arg, basestring):
             default = default.arg
@@ -628,6 +721,10 @@ def _render_constraint(constraint, autogen_context):
         return None
 
 def _render_primary_key(constraint, autogen_context):
+    rendered = _user_defined_render("primary_key", constraint, autogen_context)
+    if rendered is not False:
+        return rendered
+
     opts = []
     if constraint.name:
         opts.append(("name", repr(constraint.name)))
@@ -658,11 +755,23 @@ def _fk_colspec(fk, metadata_schema):
             return fk._colspec
 
 def _render_foreign_key(constraint, autogen_context):
+    rendered = _user_defined_render("foreign_key", constraint, autogen_context)
+    if rendered is not False:
+        return rendered
+
     opts = []
     if constraint.name:
         opts.append(("name", repr(constraint.name)))
+    if constraint.onupdate:
+        opts.append(("onupdate", repr(constraint.onupdate)))
+    if constraint.ondelete:
+        opts.append(("ondelete", repr(constraint.ondelete)))
+    if constraint.initially:
+        opts.append(("initially", repr(constraint.initially)))
+    if constraint.deferrable:
+        opts.append(("deferrable", repr(constraint.deferrable)))
+
     apply_metadata_schema = constraint.parent.metadata.schema
-    # TODO: deferrable, initially, etc.
     return "%(prefix)sForeignKeyConstraint([%(cols)s], "\
             "[%(refcols)s], %(args)s)" % {
         "prefix": _sqlalchemy_autogenerate_prefix(autogen_context),
@@ -675,6 +784,10 @@ def _render_foreign_key(constraint, autogen_context):
     }
 
 def _render_check_constraint(constraint, autogen_context):
+    rendered = _user_defined_render("check", constraint, autogen_context)
+    if rendered is not False:
+        return rendered
+
     # detect the constraint being part of
     # a parent type which is probably in the Table already.
     # ideally SQLAlchemy would give us more of a first class
@@ -697,6 +810,10 @@ def _render_check_constraint(constraint, autogen_context):
         }
 
 def _render_unique_constraint(constraint, autogen_context):
+    rendered = _user_defined_render("unique", constraint, autogen_context)
+    if rendered is not False:
+        return rendered
+
     opts = []
     if constraint.name:
         opts.append(("name", "'%s'" % constraint.name))

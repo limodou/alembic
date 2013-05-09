@@ -4,9 +4,7 @@ from tests import op_fixture, capture_context_buffer, \
     _no_sql_testing_config, assert_raises_message, staging_env, \
     three_rev_fixture, clear_staging_env
 from alembic import op, command, util
-from sqlalchemy import Integer, Column, ForeignKey, \
-            UniqueConstraint, Table, MetaData, String
-from sqlalchemy.sql import table
+from sqlalchemy import Integer, Column
 from unittest import TestCase
 
 
@@ -53,9 +51,16 @@ class OpTest(TestCase):
 
     def test_alter_column_rename_mssql(self):
         context = op_fixture('mssql')
-        op.alter_column("t", "c", name="x")
+        op.alter_column("t", "c", new_column_name="x")
         context.assert_(
-            "EXEC sp_rename 't.c', 'x', 'COLUMN'"
+            "EXEC sp_rename 't.c', x, 'COLUMN'"
+        )
+
+    def test_alter_column_rename_quoted_mssql(self):
+        context = op_fixture('mssql')
+        op.alter_column("t", "c", new_column_name="SomeFancyName")
+        context.assert_(
+            "EXEC sp_rename 't.c', [SomeFancyName], 'COLUMN'"
         )
 
     def test_alter_column_new_type(self):
@@ -154,11 +159,12 @@ class OpTest(TestCase):
 
     def test_alter_do_everything(self):
         context = op_fixture('mssql')
-        op.alter_column("t", "c", name="c2", nullable=True, type_=Integer, server_default="5")
+        op.alter_column("t", "c", new_column_name="c2", nullable=True,
+                            type_=Integer, server_default="5")
         context.assert_(
             'ALTER TABLE t ALTER COLUMN c INTEGER NULL',
             "ALTER TABLE t ADD DEFAULT '5' FOR c",
-            "EXEC sp_rename 't.c', 'c2', 'COLUMN'"
+            "EXEC sp_rename 't.c', c2, 'COLUMN'"
         )
 
     # TODO: when we add schema support

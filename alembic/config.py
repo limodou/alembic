@@ -192,6 +192,12 @@ class CommandLine(object):
                                 help="Populate revision script with candidate "
                                     "migration operations, based on comparison "
                                     "of database to model.")
+            # "current" command
+            if 'head_only' in kwargs:
+                parser.add_argument("--head-only",
+                                    action="store_true",
+                                    help="Only show current version and "
+                                    "whether or not this is the head revision.")
 
             positional_help = {
                 'directory': "location of scripts directory",
@@ -245,12 +251,15 @@ class CommandLine(object):
 
     def main(self, argv=None):
         options = self.parser.parse_args(argv)
-
-        cfg = Config(options.config, options.name)
-        self.run_cmd(cfg, options)
+        if not hasattr(options, "cmd"):
+            # see http://bugs.python.org/issue9253, argparse
+            # behavior changed incompatibly in py3.3
+            self.parser.error("too few arguments")
+        else:
+            cfg = Config(options.config, options.name)
+            self.run_cmd(cfg, options)
 
 def main(argv=None, prog=None, **kwargs):
     """The console runner function for Alembic."""
 
     CommandLine(prog=prog).main(argv=argv)
-

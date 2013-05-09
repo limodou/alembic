@@ -25,7 +25,7 @@ stable.   Users should take care to report bugs and missing features
 (see :ref:`bugs`) on an as-needed
 basis.  It should be expected that the development version may be required
 for proper implementation of recently repaired issues in between releases;
-the latest tip is always available at https://bitbucket.org/zzzeek/alembic/get/tip.tar.gz.
+the latest default tip is always available at https://bitbucket.org/zzzeek/alembic/get/default.tar.gz.
 
 .. _installation:
 
@@ -48,8 +48,11 @@ Dependencies
 
 Alembic's install process will ensure that `SQLAlchemy <http://www.sqlalchemy.org>`_
 is installed, in addition to other dependencies.  Alembic will work with
-SQLAlchemy as of version **0.6**, though with a limited featureset.
-The latest version of SQLAlchemy within the **0.7** or **0.8** series is strongly recommended.
+SQLAlchemy as of version **0.7.3**.   The latest version of SQLAlchemy within
+the **0.7** or **0.8** series is strongly recommended.
+
+.. versionchanged:: 0.5.0
+	Support for SQLAlchemy 0.6 has been dropped.
 
 
 Community
