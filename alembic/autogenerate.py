@@ -208,8 +208,8 @@ def _compare_tables(conn_table_names, metadata_table_names,
         if remove_tables:
             diffs.append(("remove_table", t))
             log.info("{{white|green:Detected}} removed table %r", name)
-        else:
-            log.info("{{white|red:Skipped}} removed table %r", name)
+#        else:
+#            log.info("{{white|red:Skipped}} removed table %r", name)
 
     existing_tables = conn_table_names.intersection(metadata_table_names)
 
@@ -309,14 +309,20 @@ def _compare_columns(schema, tname, conn_table, metadata_table,
     diff_add = m_keys - c_keys
     if diff_add:
         for x in diff_add:
-            diffs.append(("add_index", m_indexes[x]))
-            log.info("{{white|green:Detected}} add index '%s on %s(%s)'" % (x, tname, ','.join(["%r" % y for y in m_indexes[x]['column_names']])))
+            if not metadata_table.__mapping_only__:
+                diffs.append(("add_index", m_indexes[x]))
+                log.info("{{white|green:Detected}} add index '%s on %s(%s)'" % (x, tname, ','.join(["%r" % y for y in m_indexes[x]['column_names']])))
+            else:
+                log.info("{{white|red:Skipped}} add index '%s on %s(%s)'" % (x, tname, ','.join(["%r" % y for y in m_indexes[x]['column_names']])))
             
     diff_del = c_keys - m_keys
     if diff_del:
         for x in diff_del:
-            diffs.append(("remove_index", c_indexes[x]))
-            log.info("{{white|green:Detected}} remove index '%s on %s'" % (x, tname))
+            if not metadata_table.__mapping_only__:
+                diffs.append(("remove_index", c_indexes[x]))
+                log.info("{{white|green:Detected}} remove index '%s on %s'" % (x, tname))
+            else:
+                log.info("{{white|red:Skipped}} remove index '%s on %s'" % (x, tname))
             
     diff_change = m_keys & c_keys
     if diff_change:
@@ -325,16 +331,20 @@ def _compare_columns(schema, tname, conn_table, metadata_table,
             b = c_indexes[x]
             
             if a != b:
-                diffs.append(("remove_index", b))
-                diffs.append(("add_index", a))
+                if not metadata_table.__mapping_only__:
+                    diffs.append(("remove_index", b))
+                    diffs.append(("add_index", a))
                 
                 d = ''
                 if a['unique'] != b['unique']:
                     d += (' unique=%r' % a['unique']) + ' to ' + ('unique=%r' % b['unique'])
                 if a['column_names'] != b['column_names']:
                     d += ' columns %r to %r' % (a['column_names'], b['column_names'])
-                log.info("{{white|green:Detected}} change index '%s on %s changes as: %s'" % (x, tname, d))
-                
+                if not metadata_table.__mapping_only__:
+                    log.info("{{white|green:Detected}} change index '%s on %s changes as: %s'" % (x, tname, d))
+                else:
+                    log.info("{{white|red:Skipped}} change index '%s on %s changes as: %s'" % (x, tname, d))
+                    
 def _compare_nullable(schema, tname, cname, conn_col,
                             metadata_col, diffs,
                             autogen_context):
@@ -440,20 +450,29 @@ def _compare_server_default(schema, tname, cname, conn_col, metadata_col,
                         rendered_metadata_default
                     )
     if isdiff:
-        conn_col_default = conn_col['default']
-        diffs.append(
-            ("modify_default", schema, tname, cname,
-                {
-                    "existing_nullable": conn_col['nullable'],
-                    "existing_type": conn_col['type'],
-                },
-                conn_col_default,
-                metadata_default),
-        )
-        log.info("{{white|green:Detected}} server default on column '%s.%s'",
-            tname,
-            cname
-        )
+        if not metadata_col.table.__mapping_only__:
+            conn_col_default = conn_col['default']
+            diffs.append(
+                ("modify_default", schema, tname, cname,
+                    {
+                        "existing_nullable": conn_col['nullable'],
+                        "existing_type": conn_col['type'],
+                    },
+                    conn_col_default,
+                    metadata_default),
+            )
+            log.info("{{white|green:Detected}} server default %s changed on column '%s.%s'",
+                rendered_metadata_default,
+                tname,
+                cname
+            )
+        else:
+            log.info("{{white|red:Skipped}} server default %s changed on column '%s.%s'",
+                rendered_metadata_default,
+                tname,
+                cname
+            )
+            
 
 
 ###################################################
