@@ -195,8 +195,11 @@ def _compare_tables(conn_table_names, metadata_table_names,
 
     for s, tname in metadata_table_names.difference(conn_table_names):
         name = '%s.%s' % (s, tname) if s else tname
-        diffs.append(("add_table", metadata.tables[name]))
-        log.info("{{white|green:Detected}} added table %r", name)
+        if metadata.tables[tname].__mapping_only__:
+            log.info("{{white|red:Skipped}} added table %r", name)
+        else:
+            diffs.append(("add_table", metadata.tables[name]))
+            log.info("{{white|green:Detected}} added table %r", name)
 
     removal_metadata = sa_schema.MetaData()
     for s, tname in conn_table_names.difference(metadata_table_names):
