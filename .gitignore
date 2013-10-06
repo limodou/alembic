@@ -1,0 +1,11 @@
+#ClearCase control files
+.copyarea.db
+.copyarea.db.new
+*.keep
+
+#Python compiled files
+*.pyc
+*.pyo
+
+_project
+local_settings.ini
