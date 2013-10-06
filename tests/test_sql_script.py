@@ -1,13 +1,14 @@
 # coding: utf-8
 
-from __future__ import with_statement, unicode_literals
+from __future__ import unicode_literals
 
-from tests import clear_staging_env, staging_env, \
+import unittest
+
+from . import clear_staging_env, staging_env, \
     _no_sql_testing_config, capture_context_buffer, \
     three_rev_fixture, write_script
 from alembic import command, util
 from alembic.script import ScriptDirectory
-import unittest
 
 cfg = None
 a, b, c = None, None, None
@@ -91,7 +92,7 @@ class EncodingTest(unittest.TestCase):
         a = util.rev_id()
         script = ScriptDirectory.from_config(cfg)
         script.generate_revision(a, "revision a", refresh=True)
-        write_script(script, a, """# coding: utf-8
+        write_script(script, a, ("""# coding: utf-8
 from __future__ import unicode_literals
 revision = '%s'
 down_revision = None
@@ -104,12 +105,15 @@ def upgrade():
 def downgrade():
     op.execute("drôle de petite voix m’a réveillé")
 
-""".encode('utf-8') % a)
+""" % a), encoding='utf-8')
 
     def tearDown(self):
         clear_staging_env()
 
     def test_encode(self):
-        with capture_context_buffer(output_encoding='utf-8') as buf:
+        with capture_context_buffer(
+                    bytes_io=True,
+                    output_encoding='utf-8'
+                ) as buf:
             command.upgrade(cfg, a, sql=True)
         assert "« S’il vous plaît…".encode("utf-8") in buf.getvalue()

@@ -1,12 +1,13 @@
 """Test against the builders in the op.* module."""
 
-from tests import op_fixture, assert_raises_message
-from alembic import op
 from sqlalchemy import Integer, Column, ForeignKey, \
             Table, String, Boolean
-from sqlalchemy.sql import column, func
-
+from sqlalchemy.sql import column, func, text
 from sqlalchemy import event
+
+from alembic import op
+from . import op_fixture, assert_raises_message
+
 @event.listens_for(Table, "after_parent_attach")
 def _add_cols(table, metadata):
     if table.name == "tbl_with_auto_appended_column":
@@ -32,6 +33,17 @@ def test_rename_table_schema_postgresql():
     context = op_fixture("postgresql")
     op.rename_table('t1', 't2', schema="foo")
     context.assert_("ALTER TABLE foo.t1 RENAME TO t2")
+
+def test_create_index_postgresql_where():
+    context = op_fixture("postgresql")
+    op.create_index(
+        'geocoded',
+        'locations',
+        ['coordinates'],
+        postgresql_where=text("locations.coordinates != Null"))
+    context.assert_(
+            "CREATE INDEX geocoded ON locations (coordinates) "
+            "WHERE locations.coordinates != Null")
 
 def test_add_column():
     context = op_fixture()
@@ -374,6 +386,16 @@ def test_add_foreign_key_ondelete():
             "REFERENCES t2 (bat, hoho) ON DELETE CASCADE"
     )
 
+def test_add_foreign_key_deferrable():
+    context = op_fixture()
+    op.create_foreign_key('fk_test', 't1', 't2',
+                    ['foo', 'bar'], ['bat', 'hoho'],
+                    deferrable=True)
+    context.assert_(
+        "ALTER TABLE t1 ADD CONSTRAINT fk_test FOREIGN KEY(foo, bar) "
+            "REFERENCES t2 (bat, hoho) DEFERRABLE"
+    )
+
 def test_add_foreign_key_self_referential():
     context = op_fixture()
     op.create_foreign_key("fk_test", "t1", "t1", ["foo"], ["bar"])
@@ -636,7 +658,7 @@ def test_naming_changes():
 
     assert_raises_message(
         TypeError,
-        "Unknown arguments: badarg2, badarg1",
+        r"Unknown arguments: badarg\d, badarg\d",
         op.alter_column, "t", "c", badarg1="x", badarg2="y"
     )
 

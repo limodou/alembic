@@ -1,9 +1,13 @@
-from alembic import config
+#!coding: utf-8
+
+from alembic import config, util, compat
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-from alembic import util
 from alembic.script import ScriptDirectory
-from tests import eq_, capture_db, assert_raises_message
+import unittest
+from . import Mock, call
+
+from . import eq_, capture_db, assert_raises_message
 
 def test_config_no_file_main_option():
     cfg = config.Config()
@@ -38,3 +42,34 @@ def test_no_script_error():
         "No 'script_location' key found in configuration.",
         ScriptDirectory.from_config, cfg
     )
+
+
+class OutputEncodingTest(unittest.TestCase):
+
+    def test_plain(self):
+        stdout = Mock(encoding='latin-1')
+        cfg = config.Config(stdout=stdout)
+        cfg.print_stdout("test %s %s", "x", "y")
+        eq_(
+            stdout.mock_calls,
+            [call.write('test x y'), call.write('\n')]
+        )
+
+    def test_utf8_unicode(self):
+        stdout = Mock(encoding='latin-1')
+        cfg = config.Config(stdout=stdout)
+        cfg.print_stdout(compat.u("méil %s %s"), "x", "y")
+        eq_(
+            stdout.mock_calls,
+            [call.write(compat.u('méil x y')), call.write('\n')]
+        )
+
+    def test_ascii_unicode(self):
+        stdout = Mock(encoding=None)
+        cfg = config.Config(stdout=stdout)
+        cfg.print_stdout(compat.u("méil %s %s"), "x", "y")
+        eq_(
+            stdout.mock_calls,
+            [call.write('m?il x y'), call.write('\n')]
+        )
+

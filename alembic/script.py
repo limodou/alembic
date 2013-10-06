@@ -1,10 +1,8 @@
-from __future__ import with_statement
-
-import os
-from alembic import util
-import shutil
-import re
 import datetime
+import os
+import re
+import shutil
+from . import util
 
 _rev_file = re.compile(r'.*\.py$')
 _legacy_rev = re.compile(r'([a-f0-9]+)\.py$')
@@ -57,20 +55,22 @@ class ScriptDirectory(object):
                                     "found in configuration.")
         return ScriptDirectory(
                     util.coerce_resource_to_filename(script_location),
-                    file_template = config.get_main_option(
+                    file_template=config.get_main_option(
                                         'file_template',
                                         _default_file_template)
                     )
 
-    def walk_revisions(self):
+    def walk_revisions(self, base="base", head="head"):
         """Iterate through all revisions.
 
         This is actually a breadth-first tree traversal,
         with leaf nodes being heads.
 
         """
-        heads = set(self.get_heads())
-        base = self.get_revision("base")
+        if head == "head":
+            heads = set(self.get_heads())
+        else:
+            heads = set([head])
         while heads:
             todo = set(heads)
             heads = set()
@@ -246,6 +246,11 @@ class ScriptDirectory(object):
         """
         current_heads = self.get_heads()
         if len(current_heads) > 1:
+            raise util.CommandError('Only a single head is supported. The '
+                'script directory has multiple heads (due to branching), which '
+                'must be resolved by manually editing the revision files to '
+                'form a linear sequence. Run `alembic branches` to see the '
+                'divergence(s).')
             raise util.CommandError("Only a single head supported so far...")
         if current_heads:
             return current_heads[0]
@@ -376,8 +381,20 @@ class Script(object):
     @property
     def doc(self):
         """Return the docstring given in the script."""
-        if self.module.__doc__:
-            return re.split(r"\n\n", self.module.__doc__)[0]
+
+        return re.split("\n\n", self.longdoc)[0]
+
+    @property
+    def longdoc(self):
+        """Return the docstring given in the script."""
+
+        doc = self.module.__doc__
+        if doc:
+            if hasattr(self.module, "_alembic_source_encoding"):
+                doc = doc.decode(self.module._alembic_source_encoding)
+            return doc.strip()
+        else:
+            return ""
 
     def add_nextrev(self, rev):
         self.nextrev = self.nextrev.union([rev])
@@ -404,6 +421,24 @@ class Script(object):
 
         """
         return len(self.nextrev) > 1
+
+    @property
+    def log_entry(self):
+        return \
+            "Rev: %s%s%s\n" \
+            "Parent: %s\n" \
+            "Path: %s\n" \
+            "\n%s\n" % (
+                self.revision,
+                " (head)" if self.is_head else "",
+                " (branchpoint)" if self.is_branch_point else "",
+                self.down_revision,
+                self.path,
+                "\n".join(
+                    "    %s" % para
+                    for para in self.longdoc.splitlines()
+                )
+            )
 
     def __str__(self):
         return "%s -> %s%s%s, %s" % (

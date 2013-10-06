@@ -1,13 +1,7 @@
 from setuptools import setup, find_packages
-import sys
 import os
 import re
 
-extra = {}
-if sys.version_info >= (3, 0):
-    extra.update(
-        use_2to3=True,
-    )
 
 v = open(os.path.join(os.path.dirname(__file__), 'alembic', '__init__.py'))
 VERSION = re.compile(r".*__version__ = '(.*?)'", re.S).match(v.read()).group(1)
@@ -17,7 +11,7 @@ v.close()
 readme = os.path.join(os.path.dirname(__file__), 'README.rst')
 
 requires = [
-    'SQLAlchemy>=0.6.0',
+    'SQLAlchemy>=0.7.3',
     'Mako',
 ]
 
@@ -56,12 +50,11 @@ setup(name='alembic',
       license='MIT',
       packages=find_packages('.', exclude=['examples*', 'test*']),
       include_package_data=True,
-      tests_require = ['nose >= 0.11'],
+      tests_require = ['nose >= 0.11', 'mock'],
       test_suite = "nose.collector",
       zip_safe=False,
       install_requires=requires,
       entry_points = {
         'console_scripts': [ 'alembic = alembic.config:main' ],
-      },
-      **extra
+      }
 )

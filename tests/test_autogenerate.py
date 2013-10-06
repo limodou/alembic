@@ -1,20 +1,23 @@
+import re
+import sys
+from unittest import TestCase
+from . import Mock
+
 from sqlalchemy import MetaData, Column, Table, Integer, String, Text, \
-    Numeric, CHAR, ForeignKey, DATETIME, \
+    Numeric, CHAR, ForeignKey, DATETIME, INTEGER, \
     TypeDecorator, CheckConstraint, Unicode, Enum,\
     UniqueConstraint, Boolean, ForeignKeyConstraint,\
-    PrimaryKeyConstraint
+    PrimaryKeyConstraint, Index, func
 from sqlalchemy.types import NULLTYPE, TIMESTAMP
 from sqlalchemy.dialects import mysql
 from sqlalchemy.engine.reflection import Inspector
 from sqlalchemy.sql import and_, column, literal_column
-from alembic import autogenerate
+
+from alembic import autogenerate, util
 from alembic.migration import MigrationContext
-from unittest import TestCase
-from tests import staging_env, sqlite_db, clear_staging_env, eq_, \
+from . import staging_env, sqlite_db, clear_staging_env, eq_, \
         eq_ignore_whitespace, requires_07, db_for_dialect
-from alembic import util
-import re
-import sys
+
 py3k = sys.version_info >= (3, )
 
 def _model_one(schema=None):
@@ -36,6 +39,7 @@ def _model_one(schema=None):
         Column('order_id', Integer, primary_key=True),
         Column("amount", Numeric(8, 2), nullable=False,
                 server_default="0"),
+        CheckConstraint('amount >= 0', name='ck_order_amount')
     )
 
     Table('extra', m,
@@ -51,20 +55,21 @@ def _model_two(schema=None):
     Table('user', m,
         Column('id', Integer, primary_key=True),
         Column('name', String(50), nullable=False),
-        Column('a1', Text, server_default="x"),
+        Column('a1', Text, server_default="x")
     )
 
     Table('address', m,
         Column('id', Integer, primary_key=True),
         Column('email_address', String(100), nullable=False),
-        Column('street', String(50))
+        Column('street', String(50)),
     )
 
     Table('order', m,
         Column('order_id', Integer, primary_key=True),
-        Column("amount", Numeric(10, 2), nullable=True,
+        Column('amount', Numeric(10, 2), nullable=True,
                     server_default="0"),
         Column('user_id', Integer, ForeignKey('user.id')),
+        CheckConstraint('amount > -1', name='ck_order_amount'),
     )
 
     Table('item', m,
@@ -74,6 +79,7 @@ def _model_two(schema=None):
         CheckConstraint('len(description) > 5')
     )
     return m
+
 
 def _model_three():
     m = MetaData()
@@ -92,9 +98,18 @@ def _model_four():
 
     return m
 
-_default_include_symbol = lambda name, schema=None: name in ("parent", "child",
+
+def _default_include_object(obj, name, type_, reflected, compare_to):
+    if type_ == "table":
+        return name in ("parent", "child",
                                 "user", "order", "item",
                                 "address", "extra")
+    else:
+        return True
+
+_default_object_filters = [
+    _default_include_object
+]
 
 class AutogenTest(object):
     @classmethod
@@ -242,9 +257,14 @@ class AutogenCrossSchemaTest(AutogenTest, TestCase):
         metadata = self.m2
         connection = self.context.bind
         diffs = []
+        def include_object(obj, name, type_, reflected, compare_to):
+            if type_ == "table":
+                return name == "t3"
+            else:
+                return True
         autogenerate._produce_net_changes(connection, metadata, diffs,
                                           self.autogen_context,
-                                          include_symbol=lambda n, s: n == 't3',
+                                          object_filters=[include_object],
                                           include_schemas=True
                                           )
         eq_(diffs[0][0], "add_table")
@@ -254,9 +274,14 @@ class AutogenCrossSchemaTest(AutogenTest, TestCase):
         metadata = self.m2
         connection = self.context.bind
         diffs = []
+        def include_object(obj, name, type_, reflected, compare_to):
+            if type_ == "table":
+                return name == "t4"
+            else:
+                return True
         autogenerate._produce_net_changes(connection, metadata, diffs,
                                           self.autogen_context,
-                                          include_symbol=lambda n, s: n == 't4',
+                                          object_filters=[include_object],
                                           include_schemas=True
                                           )
         eq_(diffs[0][0], "add_table")
@@ -266,9 +291,14 @@ class AutogenCrossSchemaTest(AutogenTest, TestCase):
         metadata = self.m2
         connection = self.context.bind
         diffs = []
+        def include_object(obj, name, type_, reflected, compare_to):
+            if type_ == "table":
+                return name == "t1"
+            else:
+                return True
         autogenerate._produce_net_changes(connection, metadata, diffs,
                                           self.autogen_context,
-                                          include_symbol=lambda n, s: n == 't1',
+                                          object_filters=[include_object],
                                           include_schemas=True
                                           )
         eq_(diffs[0][0], "remove_table")
@@ -278,9 +308,14 @@ class AutogenCrossSchemaTest(AutogenTest, TestCase):
         metadata = self.m2
         connection = self.context.bind
         diffs = []
+        def include_object(obj, name, type_, reflected, compare_to):
+            if type_ == "table":
+                return name == "t2"
+            else:
+                return True
         autogenerate._produce_net_changes(connection, metadata, diffs,
                                           self.autogen_context,
-                                          include_symbol=lambda n, s: n == 't2',
+                                          object_filters=[include_object],
                                           include_schemas=True
                                           )
         eq_(diffs[0][0], "remove_table")
@@ -304,7 +339,6 @@ class AutogenerateDiffTestWSchema(AutogenTest, TestCase):
     def _get_model_schema(cls):
         return _model_two(schema=cls.test_schema_name)
 
-
     def test_diffs(self):
         """test generation of diff rules"""
 
@@ -313,7 +347,7 @@ class AutogenerateDiffTestWSchema(AutogenTest, TestCase):
         diffs = []
         autogenerate._produce_net_changes(connection, metadata, diffs,
                                           self.autogen_context,
-                                          include_symbol=_default_include_symbol,
+                                          object_filters=_default_object_filters,
                                           include_schemas=True
                                           )
 
@@ -341,7 +375,6 @@ class AutogenerateDiffTestWSchema(AutogenTest, TestCase):
         eq_(diffs[4][0][3], "amount")
         eq_(repr(diffs[4][0][5]), "NUMERIC(precision=8, scale=2)")
         eq_(repr(diffs[4][0][6]), "Numeric(precision=10, scale=2)")
-
 
         eq_(diffs[5][0], 'remove_column')
         eq_(diffs[5][3].name, 'pw')
@@ -382,15 +415,16 @@ class AutogenerateDiffTestWSchema(AutogenTest, TestCase):
     pass
     ### end Alembic commands ###""")
 
-    def test_render_diffs(self):
-        """test a full render including indentation"""
+    def test_render_diffs_extras(self):
+        """test a full render including indentation (include and schema)"""
 
         template_args = {}
         autogenerate._produce_migration_diffs(
                         self.context, template_args, set(),
-                        include_symbol=_default_include_symbol,
+                        include_object=_default_include_object,
                         include_schemas=True
                         )
+
         eq_(re.sub(r"u'", "'", template_args['upgrades']),
 """### commands auto generated by Alembic - please adjust! ###
     op.create_table('item',
@@ -470,7 +504,7 @@ class AutogenerateDiffTest(AutogenTest, TestCase):
         diffs = []
         autogenerate._produce_net_changes(connection, metadata, diffs,
                                           self.autogen_context,
-                                          include_symbol= _default_include_symbol
+                                          object_filters=_default_object_filters,
                                     )
 
         eq_(
@@ -498,7 +532,6 @@ class AutogenerateDiffTest(AutogenTest, TestCase):
         eq_(repr(diffs[4][0][5]), "NUMERIC(precision=8, scale=2)")
         eq_(repr(diffs[4][0][6]), "Numeric(precision=10, scale=2)")
 
-
         eq_(diffs[5][0], 'remove_column')
         eq_(diffs[5][3].name, 'pw')
 
@@ -525,6 +558,7 @@ class AutogenerateDiffTest(AutogenTest, TestCase):
         )
         template_args = {}
         autogenerate._produce_migration_diffs(context, template_args, set())
+
         eq_(re.sub(r"u'", "'", template_args['upgrades']),
 """### commands auto generated by Alembic - please adjust! ###
     pass
@@ -534,12 +568,13 @@ class AutogenerateDiffTest(AutogenTest, TestCase):
     pass
     ### end Alembic commands ###""")
 
-    def test_render_diffs(self):
+    def test_render_diffs_standard(self):
         """test a full render including indentation"""
 
         metadata = self.m2
         template_args = {}
         autogenerate._produce_migration_diffs(self.context, template_args, set())
+
         eq_(re.sub(r"u'", "'", template_args['upgrades']),
 """### commands auto generated by Alembic - please adjust! ###
     op.create_table('item',
@@ -610,16 +645,63 @@ class AutogenerateDiffTest(AutogenTest, TestCase):
         )
         template_args = {}
         autogenerate._produce_migration_diffs(context, template_args, set())
+        template_args['upgrades'] = template_args['upgrades'].replace("u'", "'")
+        template_args['downgrades'] = template_args['downgrades'].\
+                                        replace("u'", "'")
         assert "alter_column('user'" not in template_args['upgrades']
         assert "alter_column('user'" not in template_args['downgrades']
         assert "alter_column('order'" in template_args['upgrades']
         assert "alter_column('order'" in template_args['downgrades']
 
+    def test_include_object(self):
+        def include_object(obj, name, type_, reflected, compare_to):
+            assert obj.name == name
+            if type_ == "table":
+                if reflected:
+                    assert obj.metadata is not self.m2
+                else:
+                    assert obj.metadata is self.m2
+                return name in ("address", "order")
+            elif type_ == "column":
+                if reflected:
+                    assert obj.table.metadata is not self.m2
+                else:
+                    assert obj.table.metadata is self.m2
+                return name != "street"
+            else:
+                return True
+
+
+        context = MigrationContext.configure(
+            connection=self.bind.connect(),
+            opts={
+                'compare_type': True,
+                'compare_server_default': True,
+                'target_metadata': self.m2,
+                'include_object': include_object,
+                'upgrade_token': "upgrades",
+                'downgrade_token': "downgrades",
+                'alembic_module_prefix': 'op.',
+                'sqlalchemy_module_prefix': 'sa.',
+            }
+        )
+        template_args = {}
+        autogenerate._produce_migration_diffs(context, template_args, set())
+        template_args['upgrades'] = template_args['upgrades'].replace("u'", "'")
+        template_args['downgrades'] = template_args['downgrades'].\
+                                        replace("u'", "'")
+
+        assert "alter_column('user'" not in template_args['upgrades']
+        assert "alter_column('user'" not in template_args['downgrades']
+        assert "'street'" not in template_args['upgrades']
+        assert "'street'" not in template_args['downgrades']
+        assert "alter_column('order'" in template_args['upgrades']
+        assert "alter_column('order'" in template_args['downgrades']
+
     def test_skip_null_type_comparison_reflected(self):
         diff = []
-        autogenerate._compare_type(None, "sometable", "somecol",
-            {"name":"somecol", "type":NULLTYPE,
-            "nullable":True, "default":None},
+        autogenerate.compare._compare_type(None, "sometable", "somecol",
+            Column("somecol", NULLTYPE),
             Column("somecol", Integer()),
             diff, self.autogen_context
         )
@@ -627,9 +709,8 @@ class AutogenerateDiffTest(AutogenTest, TestCase):
 
     def test_skip_null_type_comparison_local(self):
         diff = []
-        autogenerate._compare_type(None, "sometable", "somecol",
-            {"name":"somecol", "type":Integer(),
-            "nullable":True, "default":None},
+        autogenerate.compare._compare_type(None, "sometable", "somecol",
+            Column("somecol", Integer()),
             Column("somecol", NULLTYPE),
             diff, self.autogen_context
         )
@@ -646,9 +727,8 @@ class AutogenerateDiffTest(AutogenTest, TestCase):
                     return dialect.type_descriptor(CHAR(32))
 
         diff = []
-        autogenerate._compare_type(None, "sometable", "somecol",
-            {"name":"somecol", "type":Integer(),
-            "nullable":True, "default":None},
+        autogenerate.compare._compare_type(None, "sometable", "somecol",
+            Column("somecol", Integer, nullable=True),
             Column("somecol", MyType()),
             diff, self.autogen_context
         )
@@ -658,14 +738,203 @@ class AutogenerateDiffTest(AutogenTest, TestCase):
         diffs = []
         from sqlalchemy.util import OrderedSet
         inspector = Inspector.from_engine(self.bind)
-        autogenerate._compare_tables(
-            OrderedSet([(None, 'extra'), (None, 'user')]), OrderedSet(), inspector,
+        autogenerate.compare._compare_tables(
+            OrderedSet([(None, 'extra'), (None, 'user')]),
+            OrderedSet(), [], inspector,
                 MetaData(), diffs, self.autogen_context
         )
         eq_(
             [(rec[0], rec[1].name) for rec in diffs],
-            [('remove_table', 'extra'), ('remove_table', u'user')]
+            [('remove_table', 'extra'), ('remove_table', 'user')]
         )
+
+
+class AutogenerateUniqueIndexTest(AutogenTest, TestCase):
+
+    @classmethod
+    def _get_db_schema(cls):
+        m = MetaData()
+
+        Table('user', m,
+            Column('id', Integer, primary_key=True),
+            Column('name', String(50), nullable=False, index=True),
+            Column('a1', Text, server_default="x")
+        )
+
+        Table('address', m,
+            Column('id', Integer, primary_key=True),
+            Column('email_address', String(100), nullable=False)
+        )
+
+        Table('order', m,
+            Column('order_id', Integer, primary_key=True),
+            Column('amount', Numeric(10, 2), nullable=True),
+            Column('user_id', Integer, ForeignKey('user.id')),
+            CheckConstraint('amount > -1', name='ck_order_amount'),
+            UniqueConstraint('order_id', 'user_id',
+                name='order_order_id_user_id_unique'
+            ),
+            Index('order_user_id_amount_idx', 'user_id', 'amount')
+        )
+        return m
+
+
+    @classmethod
+    def _get_model_schema(cls):
+        m = MetaData()
+
+        Table('user', m,
+            Column('id', Integer, primary_key=True),
+            Column('name', String(50), nullable=False),
+            Column('a1', Text, server_default="x"),
+            UniqueConstraint("name", name="uq_user_name")
+        )
+
+        Table('address', m,
+            Column('id', Integer, primary_key=True),
+            Column('email_address', String(100), nullable=False),
+            UniqueConstraint("email_address", name="uq_email_address")
+        )
+
+        Table('order', m,
+            Column('order_id', Integer, primary_key=True),
+            Column('amount', Numeric(10, 2), nullable=True),
+            Column('user_id', Integer, ForeignKey('user.id')),
+            UniqueConstraint('order_id', 'user_id',
+                name='order_order_id_user_id_unique'
+            ),
+            Index('order_user_id_amount_idx', 'user_id', 'amount', unique=True),
+            CheckConstraint('amount >= 0', name='ck_order_amount')
+        )
+
+        return m
+
+    @classmethod
+    @requires_07
+    def setup_class(cls):
+        staging_env()
+        cls.bind = cls._get_bind()
+        cls.m2 = cls._get_db_schema()
+        cls.m2.create_all(cls.bind)
+        cls.m5 = cls._get_model_schema()
+
+        conn = cls.bind.connect()
+        cls.context = context = MigrationContext.configure(
+            connection=conn,
+            opts={
+                'compare_type': True,
+                'compare_server_default': True,
+                'target_metadata': cls.m5,
+                'upgrade_token': "upgrades",
+                'downgrade_token': "downgrades",
+                'alembic_module_prefix': 'op.',
+                'sqlalchemy_module_prefix': 'sa.',
+            }
+        )
+
+        connection = context.bind
+        cls.autogen_context = {
+            'imports': set(),
+            'connection': connection,
+            'dialect': connection.dialect,
+            'context': context
+            }
+
+    @classmethod
+    def teardown_class(cls):
+        cls.m2.drop_all(cls.bind)
+        clear_staging_env()
+
+    def test_diffs(self):
+        """test generation of diff rules"""
+
+        metadata = self.m5
+        connection = self.context.bind
+        diffs = []
+        autogenerate._produce_net_changes(connection, metadata, diffs,
+                                          self.autogen_context,
+                                          object_filters=_default_object_filters,
+                                    )
+
+        eq_(diffs[0][0], "add_constraint")
+        eq_(diffs[0][1].table.name, "address")
+
+        eq_(diffs[1][0], "remove_index")
+        eq_(diffs[1][1].name, "order_user_id_amount_idx")
+        eq_(diffs[1][1].unique, False)
+
+        eq_(diffs[2][0], "add_index")
+        eq_(diffs[2][1].name, "order_user_id_amount_idx")
+        eq_(diffs[2][1].unique, True)
+
+        eq_(diffs[3][0], "add_constraint")
+        eq_(diffs[3][1].table.name, "user")
+
+        eq_(diffs[4][0], "remove_index")
+        eq_(diffs[4][1].name, "ix_user_name")
+
+
+class AutogenerateCustomCompareTypeTest(AutogenTest, TestCase):
+    @classmethod
+    def _get_db_schema(cls):
+        m = MetaData()
+
+        Table('sometable', m,
+              Column('id', Integer, primary_key=True),
+              Column('value', Integer))
+        return m
+
+    @classmethod
+    def _get_model_schema(cls):
+        m = MetaData()
+
+        Table('sometable', m,
+              Column('id', Integer, primary_key=True),
+              Column('value', String))
+        return m
+
+    def test_uses_custom_compare_type_function(self):
+        my_compare_type = Mock()
+        self.context._user_compare_type = my_compare_type
+
+        diffs = []
+        autogenerate._produce_net_changes(self.context.bind, self.m2, diffs, self.autogen_context)
+
+        first_table = self.m2.tables['sometable']
+        first_column = first_table.columns['id']
+
+        eq_(len(my_compare_type.mock_calls), 2)
+
+        # We'll just test the first call
+        _, args, _ = my_compare_type.mock_calls[0]
+        context, inspected_column, metadata_column, inspected_type, metadata_type = args
+        eq_(context, self.context)
+        eq_(metadata_column, first_column)
+        eq_(metadata_type, first_column.type)
+        eq_(inspected_column.name, first_column.name)
+        eq_(type(inspected_type), INTEGER)
+
+    def test_column_type_not_modified_when_custom_compare_type_returns_False(self):
+        my_compare_type = Mock()
+        my_compare_type.return_value = False
+        self.context._user_compare_type = my_compare_type
+
+        diffs = []
+        autogenerate._produce_net_changes(self.context.bind, self.m2, diffs, self.autogen_context)
+
+        eq_(diffs, [])
+
+    def test_column_type_modified_when_custom_compare_type_returns_True(self):
+        my_compare_type = Mock()
+        my_compare_type.return_value = True
+        self.context._user_compare_type = my_compare_type
+
+        diffs = []
+        autogenerate._produce_net_changes(self.context.bind, self.m2, diffs, self.autogen_context)
+
+        eq_(diffs[0][0][0], 'modify_type')
+        eq_(diffs[1][0][0], 'modify_type')
+
 
 class AutogenKeyTest(AutogenTest, TestCase):
     @classmethod
@@ -776,6 +1045,106 @@ class AutogenRenderTest(TestCase):
             'dialect': mysql.dialect()
         }
 
+    def test_render_add_index(self):
+        """
+        autogenerate.render._add_index
+        """
+        m = MetaData()
+        t = Table('test', m,
+            Column('id', Integer, primary_key=True),
+            Column('active', Boolean()),
+            Column('code', String(255)),
+        )
+        idx = Index('test_active_code_idx', t.c.active, t.c.code)
+        eq_ignore_whitespace(
+            autogenerate.render._add_index(idx, self.autogen_context),
+            "op.create_index('test_active_code_idx', 'test', "
+            "['active', 'code'], unique=False)"
+        )
+
+    def test_render_add_index_schema(self):
+        """
+        autogenerate.render._add_index using schema
+        """
+        m = MetaData()
+        t = Table('test', m,
+            Column('id', Integer, primary_key=True),
+            Column('active', Boolean()),
+            Column('code', String(255)),
+            schema='CamelSchema'
+        )
+        idx = Index('test_active_code_idx', t.c.active, t.c.code)
+        eq_ignore_whitespace(
+            autogenerate.render._add_index(idx, self.autogen_context),
+            "op.create_index('test_active_code_idx', 'CamelSchema.test', "
+            "['active', 'code'], unique=False, schema='CamelSchema')"
+        )
+
+    # def test_render_add_index_func(self):
+    #     """
+    #     autogenerate.render._drop_index using func -- TODO: SQLA needs to
+    #     reflect expressions as well as columns
+    #     """
+    #     m = MetaData()
+    #     t = Table('test', m,
+    #         Column('id', Integer, primary_key=True),
+    #         Column('active', Boolean()),
+    #         Column('code', String(255)),
+    #     )
+    #     idx = Index('test_active_lower_code_idx', t.c.active, func.lower(t.c.code))
+    #     eq_ignore_whitespace(
+    #         autogenerate.render._add_index(idx, self.autogen_context),
+    #         ""
+    #     )
+
+    def test_drop_index(self):
+        """
+        autogenerate.render._drop_index
+        """
+        m = MetaData()
+        t = Table('test', m,
+            Column('id', Integer, primary_key=True),
+            Column('active', Boolean()),
+            Column('code', String(255)),
+        )
+        idx = Index('test_active_code_idx', t.c.active, t.c.code)
+        eq_ignore_whitespace(
+            autogenerate.render._drop_index(idx, self.autogen_context),
+            "op.drop_index('test_active_code_idx', 'test')"
+        )
+
+    def test_add_unique_constraint(self):
+        """
+        autogenerate.render._add_unique_constraint
+        """
+        m = MetaData()
+        t = Table('test', m,
+            Column('id', Integer, primary_key=True),
+            Column('active', Boolean()),
+            Column('code', String(255)),
+        )
+        uq = UniqueConstraint(t.c.code, name='uq_test_code')
+        eq_ignore_whitespace(
+            autogenerate.render._add_unique_constraint(uq, self.autogen_context),
+            "op.create_unique_constraint('uq_test_code', 'test', ['code'])"
+        )
+
+    def test_drop_constraint(self):
+        """
+        autogenerate.render._drop_constraint
+        """
+        m = MetaData()
+        t = Table('test', m,
+            Column('id', Integer, primary_key=True),
+            Column('active', Boolean()),
+            Column('code', String(255)),
+        )
+        uq = UniqueConstraint(t.c.code, name='uq_test_code')
+        eq_ignore_whitespace(
+            autogenerate.render._drop_constraint(uq, self.autogen_context),
+            "op.drop_constraint('uq_test_code', 'test')"
+        )
+
     def test_render_table_upgrade(self):
         m = MetaData()
         t = Table('test', m,
@@ -788,7 +1157,7 @@ class AutogenRenderTest(TestCase):
             UniqueConstraint("timestamp"),
         )
         eq_ignore_whitespace(
-            autogenerate._add_table(t, self.autogen_context),
+            autogenerate.render._add_table(t, self.autogen_context),
             "op.create_table('test',"
             "sa.Column('id', sa.Integer(), nullable=False),"
             "sa.Column('name', sa.Unicode(length=255), nullable=True),"
@@ -812,7 +1181,7 @@ class AutogenRenderTest(TestCase):
             schema='foo'
         )
         eq_ignore_whitespace(
-            autogenerate._add_table(t, self.autogen_context),
+            autogenerate.render._add_table(t, self.autogen_context),
             "op.create_table('test',"
             "sa.Column('id', sa.Integer(), nullable=False),"
             "sa.Column('q', sa.Integer(), nullable=True),"
@@ -829,7 +1198,7 @@ class AutogenRenderTest(TestCase):
             Column('q', Integer, ForeignKey('foo.address.id')),
         )
         eq_ignore_whitespace(
-            autogenerate._add_table(t, self.autogen_context),
+            autogenerate.render._add_table(t, self.autogen_context),
             "op.create_table('test',"
             "sa.Column('id', sa.Integer(), nullable=False),"
             "sa.Column('q', sa.Integer(), nullable=True),"
@@ -845,7 +1214,7 @@ class AutogenRenderTest(TestCase):
             Column('q', Integer, ForeignKey('address.id')),
         )
         eq_ignore_whitespace(
-            autogenerate._add_table(t, self.autogen_context),
+            re.sub(r"u'", "'", autogenerate.render._add_table(t, self.autogen_context)),
             "op.create_table('test',"
             "sa.Column('id', sa.Integer(), nullable=False),"
             "sa.Column('q', sa.Integer(), nullable=True),"
@@ -862,7 +1231,7 @@ class AutogenRenderTest(TestCase):
             Column('q', Integer, ForeignKey('bar.address.id')),
         )
         eq_ignore_whitespace(
-            autogenerate._add_table(t, self.autogen_context),
+            autogenerate.render._add_table(t, self.autogen_context),
             "op.create_table('test',"
             "sa.Column('id', sa.Integer(), nullable=False),"
             "sa.Column('q', sa.Integer(), nullable=True),"
@@ -880,7 +1249,7 @@ class AutogenRenderTest(TestCase):
             postgresql_arg1="some_arg", mysql_engine="InnoDB"
         )
         eq_ignore_whitespace(
-            autogenerate._add_table(t, self.autogen_context),
+            autogenerate.render._add_table(t, self.autogen_context),
             "op.create_table('test',"
             "sa.Column('id', sa.Integer(), nullable=False),"
             "sa.Column('q', sa.Integer(), nullable=True),"
@@ -891,14 +1260,14 @@ class AutogenRenderTest(TestCase):
 
     def test_render_drop_table(self):
         eq_(
-            autogenerate._drop_table(Table("sometable", MetaData()),
+            autogenerate.render._drop_table(Table("sometable", MetaData()),
                         self.autogen_context),
             "op.drop_table('sometable')"
         )
 
     def test_render_drop_table_w_schema(self):
         eq_(
-            autogenerate._drop_table(
+            autogenerate.render._drop_table(
                 Table("sometable", MetaData(), schema='foo'),
                 self.autogen_context),
             "op.drop_table('sometable', schema='foo')"
@@ -906,7 +1275,7 @@ class AutogenRenderTest(TestCase):
 
     def test_render_add_column(self):
         eq_(
-            autogenerate._add_column(
+            autogenerate.render._add_column(
                     None, "foo", Column("x", Integer, server_default="5"),
                         self.autogen_context),
             "op.add_column('foo', sa.Column('x', sa.Integer(), "
@@ -915,7 +1284,7 @@ class AutogenRenderTest(TestCase):
 
     def test_render_add_column_w_schema(self):
         eq_(
-            autogenerate._add_column(
+            autogenerate.render._add_column(
                     "foo", "bar", Column("x", Integer, server_default="5"),
                         self.autogen_context),
             "op.add_column('bar', sa.Column('x', sa.Integer(), "
@@ -924,7 +1293,7 @@ class AutogenRenderTest(TestCase):
 
     def test_render_drop_column(self):
         eq_(
-            autogenerate._drop_column(
+            autogenerate.render._drop_column(
                     None, "foo", Column("x", Integer, server_default="5"),
                         self.autogen_context),
 
@@ -933,7 +1302,7 @@ class AutogenRenderTest(TestCase):
 
     def test_render_drop_column_w_schema(self):
         eq_(
-            autogenerate._drop_column(
+            autogenerate.render._drop_column(
                     "foo", "bar", Column("x", Integer, server_default="5"),
                         self.autogen_context),
 
@@ -942,7 +1311,7 @@ class AutogenRenderTest(TestCase):
 
     def test_render_quoted_server_default(self):
         eq_(
-            autogenerate._render_server_default(
+            autogenerate.render._render_server_default(
                 "nextval('group_to_perm_group_to_perm_id_seq'::regclass)",
                     self.autogen_context),
             '"nextval(\'group_to_perm_group_to_perm_id_seq\'::regclass)"'
@@ -952,7 +1321,7 @@ class AutogenRenderTest(TestCase):
         c = Column('updated_at', TIMESTAMP(),
                 server_default='TIMEZONE("utc", CURRENT_TIMESTAMP)',
                 nullable=False)
-        result = autogenerate._render_column(
+        result = autogenerate.render._render_column(
                     c, self.autogen_context
                 )
         eq_(
@@ -965,7 +1334,7 @@ class AutogenRenderTest(TestCase):
     def test_render_col_autoinc_false_mysql(self):
         c = Column('some_key', Integer, primary_key=True, autoincrement=False)
         Table('some_table', MetaData(), c)
-        result = autogenerate._render_column(
+        result = autogenerate.render._render_column(
                     c, self.autogen_context
                 )
         eq_(
@@ -998,7 +1367,7 @@ class AutogenRenderTest(TestCase):
                 PrimaryKeyConstraint('x'),
                 ForeignKeyConstraint(['x'], ['y'])
             )
-        result = autogenerate._add_table(
+        result = autogenerate.render._add_table(
                     t, autogen_context
                 )
         eq_(
@@ -1009,7 +1378,7 @@ render:primary_key\n)"""
 
     def test_render_modify_type(self):
         eq_ignore_whitespace(
-            autogenerate._modify_col(
+            autogenerate.render._modify_col(
                         "sometable", "somecolumn",
                         self.autogen_context,
                         type_=CHAR(10), existing_type=CHAR(20)),
@@ -1019,7 +1388,7 @@ render:primary_key\n)"""
 
     def test_render_modify_type_w_schema(self):
         eq_ignore_whitespace(
-            autogenerate._modify_col(
+            autogenerate.render._modify_col(
                         "sometable", "somecolumn",
                         self.autogen_context,
                         type_=CHAR(10), existing_type=CHAR(20),
@@ -1031,7 +1400,7 @@ render:primary_key\n)"""
 
     def test_render_modify_nullable(self):
         eq_ignore_whitespace(
-            autogenerate._modify_col(
+            autogenerate.render._modify_col(
                         "sometable", "somecolumn",
                         self.autogen_context,
                         existing_type=Integer(),
@@ -1042,7 +1411,7 @@ render:primary_key\n)"""
 
     def test_render_modify_nullable_w_schema(self):
         eq_ignore_whitespace(
-            autogenerate._modify_col(
+            autogenerate.render._modify_col(
                         "sometable", "somecolumn",
                         self.autogen_context,
                         existing_type=Integer(),
@@ -1061,7 +1430,7 @@ render:primary_key\n)"""
             t1.append_constraint(fk)
 
         eq_ignore_whitespace(
-            autogenerate._render_constraint(fk, self.autogen_context),
+            re.sub(r"u'", "'", autogenerate.render._render_constraint(fk, self.autogen_context)),
             "sa.ForeignKeyConstraint(['c'], ['t2.c_rem'], onupdate='CASCADE')"
         )
 
@@ -1070,7 +1439,7 @@ render:primary_key\n)"""
             t1.append_constraint(fk)
 
         eq_ignore_whitespace(
-            autogenerate._render_constraint(fk, self.autogen_context),
+            re.sub(r"u'", "'", autogenerate.render._render_constraint(fk, self.autogen_context)),
             "sa.ForeignKeyConstraint(['c'], ['t2.c_rem'], ondelete='CASCADE')"
         )
 
@@ -1078,7 +1447,7 @@ render:primary_key\n)"""
         if not util.sqla_08:
             t1.append_constraint(fk)
         eq_ignore_whitespace(
-            autogenerate._render_constraint(fk, self.autogen_context),
+            re.sub(r"u'", "'", autogenerate.render._render_constraint(fk, self.autogen_context)),
             "sa.ForeignKeyConstraint(['c'], ['t2.c_rem'], deferrable=True)"
         )
 
@@ -1086,17 +1455,30 @@ render:primary_key\n)"""
         if not util.sqla_08:
             t1.append_constraint(fk)
         eq_ignore_whitespace(
-            autogenerate._render_constraint(fk, self.autogen_context),
+            re.sub(r"u'", "'", autogenerate.render._render_constraint(fk, self.autogen_context)),
             "sa.ForeignKeyConstraint(['c'], ['t2.c_rem'], initially='XYZ')"
+        )
+
+    def test_render_fk_constraint_use_alter(self):
+        m = MetaData()
+        Table('t', m, Column('c', Integer))
+        t2 = Table('t2', m, Column('c_rem', Integer,
+                                ForeignKey('t.c', name="fk1", use_alter=True)))
+        const = list(t2.foreign_keys)[0].constraint
+
+        eq_ignore_whitespace(
+            autogenerate.render._render_constraint(const, self.autogen_context),
+            "sa.ForeignKeyConstraint(['c_rem'], ['t.c'], "
+                    "name='fk1', use_alter=True)"
         )
 
     def test_render_check_constraint_literal(self):
         eq_ignore_whitespace(
-            autogenerate._render_check_constraint(
-                CheckConstraint("im a constraint"),
+            autogenerate.render._render_check_constraint(
+                CheckConstraint("im a constraint", name='cc1'),
                 self.autogen_context
             ),
-            "sa.CheckConstraint('im a constraint')"
+            "sa.CheckConstraint('im a constraint', name='cc1')"
         )
 
     def test_render_check_constraint_sqlexpr(self):
@@ -1104,7 +1486,7 @@ render:primary_key\n)"""
         five = literal_column('5')
         ten = literal_column('10')
         eq_ignore_whitespace(
-            autogenerate._render_check_constraint(
+            autogenerate.render._render_check_constraint(
                 CheckConstraint(and_(c > five, c < ten)),
                 self.autogen_context
             ),
@@ -1113,7 +1495,7 @@ render:primary_key\n)"""
 
     def test_render_modify_nullable_w_default(self):
         eq_ignore_whitespace(
-            autogenerate._modify_col(
+            autogenerate.render._modify_col(
                         "sometable", "somecolumn",
                         self.autogen_context,
                         existing_type=Integer(),
@@ -1126,14 +1508,14 @@ render:primary_key\n)"""
 
     def test_render_enum(self):
         eq_ignore_whitespace(
-            autogenerate._repr_type(
+            autogenerate.render._repr_type(
                         "sa.",
                         Enum("one", "two", "three", name="myenum"),
                         self.autogen_context),
             "sa.Enum('one', 'two', 'three', name='myenum')"
         )
         eq_ignore_whitespace(
-            autogenerate._repr_type(
+            autogenerate.render._repr_type(
                         "sa.",
                         Enum("one", "two", "three"),
                         self.autogen_context),

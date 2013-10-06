@@ -1,20 +1,20 @@
-from __future__ import with_statement
-
-from mako.template import Template
 import sys
 import os
 import textwrap
-from sqlalchemy.engine import url
-import imp
 import warnings
 import re
 import inspect
 import uuid
 
+from mako.template import Template
+from sqlalchemy.engine import url
+from sqlalchemy import __version__
+
+from .compat import callable, exec_, load_module, binary_type
+
 class CommandError(Exception):
     pass
 
-from sqlalchemy import __version__
 def _safe_int(value):
     try:
         return int(value)
@@ -113,7 +113,7 @@ def create_module_class_proxy(cls, globals_, locals_):
             'doc': fn.__doc__,
         })
         lcl = {}
-        exec func_text in globals_, lcl
+        exec_(func_text, globals_, lcl)
         return lcl[name]
 
     for methname in dir(cls):
@@ -122,6 +122,14 @@ def create_module_class_proxy(cls, globals_, locals_):
                 locals_[methname] = _create_op_proxy(methname)
             else:
                 attr_names.add(methname)
+
+def write_outstream(stream, *text):
+    encoding = getattr(stream, 'encoding', 'ascii') or 'ascii'
+    for t in text:
+        if not isinstance(t, binary_type):
+            t = t.encode(encoding, 'replace')
+        t = t.decode(encoding)
+        stream.write(t)
 
 def coerce_resource_to_filename(fname):
     """Interpret a filename as either a filesystem location or as a package resource.
@@ -139,10 +147,10 @@ def status(_statmsg, fn, *arg, **kw):
     msg(_statmsg + "...", False)
     try:
         ret = fn(*arg, **kw)
-        sys.stdout.write("done\n")
+        write_outstream(sys.stdout, "done\n")
         return ret
     except:
-        sys.stdout.write("FAILED\n")
+        write_outstream(sys.stdout, "FAILED\n")
         raise
 
 def err(message):
@@ -166,15 +174,15 @@ def msg(msg, newline=True):
     lines = textwrap.wrap(msg, width)
     if len(lines) > 1:
         for line in lines[0:-1]:
-            sys.stdout.write("  " + line + "\n")
-    sys.stdout.write("  " + lines[-1] + ("\n" if newline else ""))
+            write_outstream(sys.stdout, "  ", line, "\n")
+    write_outstream(sys.stdout, "  ", lines[-1], ("\n" if newline else ""))
 
 def load_python_file(dir_, filename):
     """Load a file from the given path as a Python module."""
 
     module_id = re.sub(r'\W', "_", filename)
     path = os.path.join(dir_, filename)
-    module = imp.load_source(module_id, path, open(path, 'rb'))
+    module = load_module(module_id, path)
     del sys.modules[module_id]
     return module
 
@@ -244,9 +252,6 @@ class immutabledict(dict):
         return "immutabledict(%s)" % dict.__repr__(self)
 
 
-
-
-
 def _with_legacy_names(translations):
     def decorate(fn):
 
@@ -277,7 +282,7 @@ def _with_legacy_names(translations):
         code = 'lambda %(args)s: %(target)s(%(apply_kw)s)' % (
                 metadata)
         decorated = eval(code, {"target": go})
-        decorated.func_defaults = getattr(fn, 'im_func', fn).func_defaults
+        decorated.__defaults__ = getattr(fn, '__func__', fn).__defaults__
         return update_wrapper(decorated, fn)
 
     return decorate

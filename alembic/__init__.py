@@ -1,10 +1,11 @@
 from os import path
 
-__version__ = '0.5.0'
+__version__ = '0.6.1'
 
 package_dir = path.abspath(path.dirname(__file__))
 
 
-from alembic import op
-from alembic import context
+from . import op
+from . import context
+
 

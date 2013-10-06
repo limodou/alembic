@@ -1,29 +1,42 @@
-from __future__ import with_statement
-
-from sqlalchemy.engine import default
-import shutil
+# coding: utf-8
+import io
 import os
-from sqlalchemy import create_engine, text
-from alembic import util
-from alembic.migration import MigrationContext
-from alembic.environment import EnvironmentContext
 import re
-import alembic
-from alembic.operations import Operations
-from alembic.script import ScriptDirectory, Script
-import StringIO
-from alembic.ddl.impl import _impls
-import ConfigParser
+import shutil
+import textwrap
+
 from nose import SkipTest
+from sqlalchemy.engine import default
+from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.util import decorator
-import textwrap
+
+import alembic
+from alembic.compat import configparser
+from alembic import util
+from alembic.compat import string_types, text_type, u, py33
+from alembic.migration import MigrationContext
+from alembic.environment import EnvironmentContext
+from alembic.operations import Operations
+from alembic.script import ScriptDirectory, Script
+from alembic.ddl.impl import _impls
 
 staging_directory = os.path.join(os.path.dirname(__file__), 'scratch')
 files_directory = os.path.join(os.path.dirname(__file__), 'files')
 
-testing_config = ConfigParser.ConfigParser()
+testing_config = configparser.ConfigParser()
 testing_config.read(['test.cfg'])
+
+if py33:
+    from unittest.mock import Mock, call
+else:
+    try:
+        from mock import Mock, call
+    except ImportError:
+        raise ImportError(
+                "Alembic's test suite requires the "
+                "'mock' library as of 0.6.1.")
+
 
 def sqlite_db():
     # sqlite caches table pragma info
@@ -46,15 +59,15 @@ def db_for_dialect(name):
     else:
         try:
             cfg = testing_config.get("db", name)
-        except ConfigParser.NoOptionError:
+        except configparser.NoOptionError:
             raise SkipTest("No dialect %r in test.cfg" % name)
         try:
             eng = create_engine(cfg)
-        except ImportError, er1:
+        except ImportError as er1:
             raise SkipTest("Can't import DBAPI: %s" % er1)
         try:
-            conn = eng.connect()
-        except SQLAlchemyError, er2:
+            eng.connect()
+        except SQLAlchemyError as er2:
             raise SkipTest("Can't connect to database: %s" % er2)
         _engs[name] = eng
         return eng
@@ -88,25 +101,27 @@ def _get_dialect(name):
 def assert_compiled(element, assert_string, dialect=None):
     dialect = _get_dialect(dialect)
     eq_(
-        unicode(element.compile(dialect=dialect)).\
+        text_type(element.compile(dialect=dialect)).\
                     replace("\n", "").replace("\t", ""),
         assert_string.replace("\n", "").replace("\t", "")
     )
 
 def capture_context_buffer(**kw):
-    buf = StringIO.StringIO()
+    if kw.pop('bytes_io', False):
+        buf = io.BytesIO()
+    else:
+        buf = io.StringIO()
 
     class capture(object):
         def __enter__(self):
             EnvironmentContext._default_opts = {
-                'dialect_name':"sqlite",
-                'output_buffer':buf
+                'dialect_name': "sqlite",
+                'output_buffer': buf
             }
             EnvironmentContext._default_opts.update(kw)
             return buf
 
         def __exit__(self, *arg, **kwarg):
-            #print(buf.getvalue())
             EnvironmentContext._default_opts = None
 
     return capture()
@@ -134,9 +149,9 @@ def assert_raises_message(except_cls, msg, callable_, *args, **kwargs):
     try:
         callable_(*args, **kwargs)
         assert False, "Callable did not raise an exception"
-    except except_cls, e:
+    except except_cls as e:
         assert re.search(msg, str(e)), "%r !~ %s" % (msg, e)
-        print str(e)
+        print(text_type(e))
 
 def op_fixture(dialect='default', as_sql=False):
     impl = _impls[dialect]
@@ -150,9 +165,9 @@ def op_fixture(dialect='default', as_sql=False):
             # as tests get more involved
             self.connection = None
         def _exec(self, construct, *args, **kw):
-            if isinstance(construct, basestring):
+            if isinstance(construct, string_types):
                 construct = text(construct)
-            sql = unicode(construct.compile(dialect=self.dialect))
+            sql = text_type(construct.compile(dialect=self.dialect))
             sql = re.sub(r'[\n\t]', '', sql)
             self.assertion.append(
                 sql
@@ -302,11 +317,15 @@ def clear_staging_env():
     shutil.rmtree(staging_directory, True)
 
 
-def write_script(scriptdir, rev_id, content):
+def write_script(scriptdir, rev_id, content, encoding='ascii'):
     old = scriptdir._revision_map[rev_id]
     path = old.path
-    with open(path, 'w') as fp:
-        fp.write(textwrap.dedent(content))
+
+    content = textwrap.dedent(content)
+    if encoding:
+        content = content.encode(encoding)
+    with open(path, 'wb') as fp:
+        fp.write(content)
     pyc_path = util.pyc_file_from_path(path)
     if os.access(pyc_path, os.F_OK):
         os.unlink(pyc_path)
@@ -326,7 +345,8 @@ def three_rev_fixture(cfg):
 
     script = ScriptDirectory.from_config(cfg)
     script.generate_revision(a, "revision a", refresh=True)
-    write_script(script, a, """
+    write_script(script, a, """\
+"Rev A"
 revision = '%s'
 down_revision = None
 
@@ -341,7 +361,8 @@ def downgrade():
 """ % a)
 
     script.generate_revision(b, "revision b", refresh=True)
-    write_script(script, b, """
+    write_script(script, b, u("""# coding: utf-8
+"Rev B, méil"
 revision = '%s'
 down_revision = '%s'
 
@@ -353,10 +374,11 @@ def upgrade():
 def downgrade():
     op.execute("DROP STEP 2")
 
-""" % (b, a))
+""") % (b, a), encoding="utf-8")
 
     script.generate_revision(c, "revision c", refresh=True)
-    write_script(script, c, """
+    write_script(script, c, """\
+"Rev C"
 revision = '%s'
 down_revision = '%s'
 

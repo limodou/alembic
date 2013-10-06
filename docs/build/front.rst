@@ -9,7 +9,10 @@ Project Homepage
 
 Alembic is hosted on `Bitbucket <http://bitbucket.org>`_ - the lead project
 page is at https://bitbucket.org/zzzeek/alembic. Source code is tracked here
-using `Mercurial <http://mercurial.selenic.com/>`_.
+using `Git <http://git-scm.com/>`_.
+
+.. versionchanged:: 0.6
+	The source repository was moved from Mercurial to Git.
 
 Releases and project status are available on Pypi at
 http://pypi.python.org/pypi/alembic.
@@ -25,7 +28,7 @@ stable.   Users should take care to report bugs and missing features
 (see :ref:`bugs`) on an as-needed
 basis.  It should be expected that the development version may be required
 for proper implementation of recently repaired issues in between releases;
-the latest default tip is always available at https://bitbucket.org/zzzeek/alembic/get/default.tar.gz.
+the latest master is always available at https://bitbucket.org/zzzeek/alembic/get/master.tar.gz.
 
 .. _installation:
 
@@ -49,11 +52,15 @@ Dependencies
 Alembic's install process will ensure that `SQLAlchemy <http://www.sqlalchemy.org>`_
 is installed, in addition to other dependencies.  Alembic will work with
 SQLAlchemy as of version **0.7.3**.   The latest version of SQLAlchemy within
-the **0.7** or **0.8** series is strongly recommended.
+the **0.7**, **0.8**, or more recent series is strongly recommended.
+
+Alembic supports Python versions 2.6 and above.
 
 .. versionchanged:: 0.5.0
 	Support for SQLAlchemy 0.6 has been dropped.
 
+.. versionchanged:: 0.6.0
+	Now supporting Python 2.6 and above.
 
 Community
 =========
