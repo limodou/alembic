@@ -104,7 +104,7 @@ def _mysql_colspec(compiler, name, nullable, server_default, type_,
     )
     if autoincrement:
         spec += " AUTO_INCREMENT"
-    if server_default != False:
+    if server_default != False and server_default is not None:
         spec += " DEFAULT %s" % _render_value(compiler, server_default)
 
     return spec

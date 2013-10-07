@@ -172,7 +172,6 @@ def _compare_uniques(schema, tname, object_filters, conn_table,
     )
     c_keys = set(c_objs)
 
-    print '--------------', m_keys, c_keys
     for key in m_keys.difference(c_keys):
         meta_constraint = m_objs[key]
         diffs.append(("add_constraint", meta_constraint))
@@ -413,7 +412,11 @@ def _compare_server_default(schema, tname, cname, conn_col, metadata_col,
             )
         else:
             log.info("{{white|red:Skipped}} server default %s changed on column '%s.%s'",
-        )
+                rendered_conn_default,
+                rendered_metadata_default,
+                tname,
+                cname
+            )
 
 
 
