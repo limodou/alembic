@@ -262,14 +262,14 @@ def _compare_indexes(schema, tname, object_filters, conn_table,
         conn_exps = [exp.name for exp in conn_index.columns]
         meta_exps = [exp.name for exp in meta_index.columns]
 
-        if meta_index.unique is not conn_index.unique \
+        if bool(meta_index.unique) != bool(conn_index.unique) \
                 or meta_exps != conn_exps:
             if not metadata_table.__mapping_only__:
                 diffs.append(("remove_index", conn_index))
                 diffs.append(("add_index", meta_index))
 
             msg = []
-            if meta_index.unique is not conn_index.unique:
+            if bool(meta_index.unique) != bool(conn_index.unique):
                 msg.append(' unique=%r to unique=%r' % (
                     conn_index.unique, meta_index.unique
                 ))
