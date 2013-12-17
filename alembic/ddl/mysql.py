@@ -78,7 +78,7 @@ def _mysql_doesnt_support_individual(element, compiler, **kw):
 def _mysql_alter_column(element, compiler, **kw):
     return "%s CHANGE %s %s" % (
         alter_table(compiler, element.table_name, element.schema),
-        element.column_name,
+        compiler.preparer.quote_identifier(element.column_name),
         _mysql_colspec(
             compiler,
             name=element.newname,
@@ -98,7 +98,7 @@ def _render_value(compiler, expr):
 def _mysql_colspec(compiler, name, nullable, server_default, type_,
                                         autoincrement):
     spec = "%s %s %s" % (
-        name,
+        compiler.preparer.quote_identifier(name),
         compiler.dialect.type_compiler.process(type_),
         "NULL" if nullable else "NOT NULL"
     )
