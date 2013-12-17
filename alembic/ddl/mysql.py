@@ -6,7 +6,7 @@ from ..compat import string_types
 from .. import util
 from .impl import DefaultImpl
 from .base import ColumnNullable, ColumnName, ColumnDefault, \
-            ColumnType, AlterColumn
+            ColumnType, AlterColumn, format_column_name
 from .base import alter_table
 
 class MySQLImpl(DefaultImpl):
@@ -78,7 +78,7 @@ def _mysql_doesnt_support_individual(element, compiler, **kw):
 def _mysql_alter_column(element, compiler, **kw):
     return "%s CHANGE %s %s" % (
         alter_table(compiler, element.table_name, element.schema),
-        compiler.preparer.quote_identifier(element.column_name),
+        format_column_name(compiler, element.column_name),
         _mysql_colspec(
             compiler,
             name=element.newname,
@@ -98,13 +98,13 @@ def _render_value(compiler, expr):
 def _mysql_colspec(compiler, name, nullable, server_default, type_,
                                         autoincrement):
     spec = "%s %s %s" % (
-        compiler.preparer.quote_identifier(name),
+        format_column_name(compiler, name),
         compiler.dialect.type_compiler.process(type_),
         "NULL" if nullable else "NOT NULL"
     )
     if autoincrement:
         spec += " AUTO_INCREMENT"
-    if server_default != False and server_default is not None:
+    if server_default != False:
         spec += " DEFAULT %s" % _render_value(compiler, server_default)
 
     return spec

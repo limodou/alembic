@@ -1,6 +1,7 @@
 from sqlalchemy.exc import NoSuchTableError
 from sqlalchemy import schema as sa_schema, types as sqltypes
 import logging
+from .. import compat
 from .render import _render_server_default
 from sqlalchemy.util import OrderedSet
 
@@ -144,14 +145,30 @@ def _compare_columns(schema, tname, object_filters, conn_table, metadata_table,
         if col_diff:
             diffs.append(col_diff)
 
+class _uq_constraint_sig(object):
+    def __init__(self, const):
+        self.const = const
+        self.name = const.name
+        self.sig = tuple(sorted([col.name for col in const.columns]))
+
+    def __eq__(self, other):
+        if self.name is not None and other.name is not None:
+            return other.name == self.name
+        else:
+            return self.sig == other.sig
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __hash__(self):
+        return hash(self.sig)
 
 def _compare_uniques(schema, tname, object_filters, conn_table,
             metadata_table, diffs, autogen_context, inspector):
 
     m_objs = dict(
-        (i.name, i) for i in metadata_table.constraints
-        if isinstance(i, sa_schema.UniqueConstraint)
-        and i.name is not None
+        (_uq_constraint_sig(uq), uq) for uq in metadata_table.constraints
+        if isinstance(uq, sa_schema.UniqueConstraint)
     )
     m_keys = set(m_objs.keys())
 
@@ -166,9 +183,9 @@ def _compare_uniques(schema, tname, object_filters, conn_table,
         return None
 
     c_objs = dict(
-        (i['name'], _make_unique_constraint(i, conn_table))
-        for i in conn_uniques
-        if i['name'] is not None
+        (_uq_constraint_sig(uq), uq)
+        for uq in
+        (_make_unique_constraint(uq_def, conn_table) for uq_def in conn_uniques)
     )
     c_keys = set(c_objs)
 
@@ -206,9 +223,17 @@ def _compare_uniques(schema, tname, object_filters, conn_table,
     # deduplication
     return c_keys
 
+def _get_index_column_names(idx):
+    if compat.sqla_08:
+        return [exp.name for exp in idx.expressions]
+    else:
+        return [col.name for col in idx.columns]
+
 def _compare_indexes(schema, tname, object_filters, conn_table,
             metadata_table, diffs, autogen_context, inspector,
             c_uniques_keys):
+
+
 
     try:
         reflected_indexes = inspector.get_indexes(tname)
@@ -233,6 +258,8 @@ def _compare_indexes(schema, tname, object_filters, conn_table,
             i.name for i in metadata_table.constraints \
             if isinstance(i, sa_schema.UniqueConstraint) and i.name is not None
         )
+    else:
+        c_uniques_keys = set(uq.name for uq in c_uniques_keys if uq.name is not None)
 
     c_keys = set(c_objs).difference(c_uniques_keys)
     m_keys = set(m_objs).difference(c_uniques_keys)
@@ -241,35 +268,35 @@ def _compare_indexes(schema, tname, object_filters, conn_table,
         meta = m_objs[key]
         if not metadata_table.__mapping_only__:
             diffs.append(("add_index", meta))
-            log.info("{{white|green:Detected}} add index '%s' on '%s(%s)'" % (key, tname, ','.join([exp.name for exp in m_objs[key].columns])))
+            log.info("{{white|green:Detected}} added index '%s' on '%s(%s)'" % (key, tname, ','.join([exp.name for exp in m_objs[key].columns])))
         else:
-            log.info("{{white|red:Skipped}} add index '%s' on '%s(%s)'" % (key, tname, ','.join([exp.name for exp in m_objs[key].columns])))
+            log.info("{{white|red:Skipped}} added index '%s' on '%s(%s)'" % (key, tname, ','.join([exp.name for exp in m_objs[key].columns])))
 
     for key in c_keys.difference(m_keys):
         if not metadata_table.__mapping_only__:
             diffs.append(("remove_index", c_objs[key]))
-            log.info("{{white|green:Detected}} remove index '%s' on '%s'" % (key, tname))
+            log.info("{{white|green:Detected}} removed index '%s' on '%s'" % (key, tname))
         else:
-            log.info("{{white|red:Skipped}} remove index '%s' on '%s'" % (key, tname))
+            log.info("{{white|red:Skipped}} removed index '%s' on '%s'" % (key, tname))
 
     for key in m_keys.intersection(c_keys):
         meta_index = m_objs[key]
         conn_index = c_objs[key]
         # TODO: why don't we just render the DDL here
         # so we can compare the string output fully
-#        conn_exps = [exp.name for exp in conn_index.expressions]
-#        meta_exps = [exp.name for exp in meta_index.expressions]
-        conn_exps = [exp.name for exp in conn_index.columns]
-        meta_exps = [exp.name for exp in meta_index.columns]
+        conn_exps = _get_index_column_names(conn_index)
+        meta_exps = _get_index_column_names(meta_index)
 
-        if bool(meta_index.unique) != bool(conn_index.unique) \
+        # convert between both Nones (SQLA ticket #2825) on the metadata
+        # side and zeroes on the reflection side.
+        if bool(meta_index.unique) is not bool(conn_index.unique) \
                 or meta_exps != conn_exps:
             if not metadata_table.__mapping_only__:
                 diffs.append(("remove_index", conn_index))
                 diffs.append(("add_index", meta_index))
 
             msg = []
-            if bool(meta_index.unique) != bool(conn_index.unique):
+            if meta_index.unique is not conn_index.unique:
                 msg.append(' unique=%r to unique=%r' % (
                     conn_index.unique, meta_index.unique
                 ))
@@ -278,9 +305,9 @@ def _compare_indexes(schema, tname, object_filters, conn_table,
                     conn_exps, meta_exps
                 ))
             if not metadata_table.__mapping_only__:
-                log.info("{{white|green:Detected}} change index '%s' on '%s' changes as: '%s'" % (key, tname, ', '.join(msg)))
+                log.info("{{white|green:Detected}} changed index '%s' on '%s' changes as: '%s'" % (key, tname, ', '.join(msg)))
             else:
-                log.info("{{white|red:Skipped}} change index '%s' on '%s' changes as: '%s'" % (key, tname, ', '.join(msg)))
+                log.info("{{white|red:Skipped}} changed index '%s' on '%s' changes as: '%s'" % (key, tname, ', '.join(msg)))
 
 
 def _compare_nullable(schema, tname, cname, conn_col,
