@@ -712,9 +712,14 @@ class Operations(object):
         """
         # need a dummy column name here since SQLAlchemy
         # 0.7.6 and further raises on Index with no columns
-        self.impl.drop_index(
-            self._index(name, table_name, ['x'], schema=schema)
-        )
+        try:
+            self.impl.drop_index(
+                self._index(name, table_name, ['x'], schema=schema)
+            )
+        except:
+            import traceback
+            traceback.print_exc()
+            print "Warning: index %s(table_name) will be skipped" % (name, table_name)
 
     @util._with_legacy_names([("type", "type_")])
     def drop_constraint(self, name, table_name, type_=None, schema=None):
