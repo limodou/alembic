@@ -717,9 +717,9 @@ class Operations(object):
                 self._index(name, table_name, ['x'], schema=schema)
             )
         except:
-            import traceback
-            traceback.print_exc()
-            print "Warning: index %s(table_name) will be skipped" % (name, table_name)
+#            import traceback
+#            traceback.print_exc()
+            print "Warning: Dropping index %s(%s) failed, it will be skipped" % (name, table_name)
 
     @util._with_legacy_names([("type", "type_")])
     def drop_constraint(self, name, table_name, type_=None, schema=None):
