@@ -10,7 +10,7 @@ from mako.template import Template
 from sqlalchemy.engine import url
 from sqlalchemy import __version__
 
-from .compat import callable, exec_, load_module, binary_type
+from .compat import callable, exec_, load_module_py, load_module_pyc, binary_type
 
 class CommandError(Exception):
     pass
@@ -23,6 +23,9 @@ def _safe_int(value):
 _vers = tuple([_safe_int(x) for x in re.findall(r'(\d+|[abc]\d)', __version__)])
 sqla_07 = _vers > (0, 7, 2)
 sqla_08 = _vers >= (0, 8, 0, 'b2')
+sqla_09 = _vers >= (0, 9, 0)
+sqla_092 = _vers >= (0, 9, 2)
+sqla_094 = _vers >= (0, 9, 4)
 if not sqla_07:
     raise CommandError(
             "SQLAlchemy 0.7.3 or greater is required. ")
@@ -38,6 +41,8 @@ try:
     ioctl = fcntl.ioctl(0, termios.TIOCGWINSZ,
                            struct.pack('HHHH', 0, 0, 0, 0))
     _h, TERMWIDTH, _hp, _wp = struct.unpack('HHHH', ioctl)
+    if TERMWIDTH <= 0:  # can occur if running in emacs pseudo-tty
+        TERMWIDTH = None
 except (ImportError, IOError):
     TERMWIDTH = None
 
@@ -136,7 +141,13 @@ def write_outstream(stream, *text):
         if not isinstance(t, binary_type):
             t = t.encode(encoding, 'replace')
         t = t.decode(encoding)
-        stream.write(t)
+        try:
+            stream.write(t)
+        except IOError:
+            # suppress "broken pipe" errors.
+            # no known way to handle this on Python 3 however
+            # as the exception is "ignored" (noisily) in TextIOWrapper.
+            break
 
 def coerce_resource_to_filename(fname):
     """Interpret a filename as either a filesystem location or as a package resource.
@@ -151,13 +162,13 @@ def coerce_resource_to_filename(fname):
     return fname
 
 def status(_statmsg, fn, *arg, **kw):
-    msg(_statmsg + "...", False)
+    msg(_statmsg + " ...", False)
     try:
         ret = fn(*arg, **kw)
-        write_outstream(sys.stdout, "done\n")
+        write_outstream(sys.stdout, " done\n")
         return ret
     except:
-        write_outstream(sys.stdout, "FAILED\n")
+        write_outstream(sys.stdout, " FAILED\n")
         raise
 
 def err(message):
@@ -195,9 +206,34 @@ def load_python_file(dir_, filename):
 
     module_id = re.sub(r'\W', "_", filename)
     path = os.path.join(dir_, filename)
-    module = load_module(module_id, path)
+    _, ext = os.path.splitext(filename)
+    if ext == ".py":
+        if os.path.exists(path):
+            module = load_module_py(module_id, path)
+        elif os.path.exists(simple_pyc_file_from_path(path)):
+            # look for sourceless load
+            module = load_module_pyc(module_id, simple_pyc_file_from_path(path))
+        else:
+            raise ImportError("Can't find Python file %s" % path)
+    elif ext in (".pyc", ".pyo"):
+        module = load_module_pyc(module_id, path)
     del sys.modules[module_id]
     return module
+
+def simple_pyc_file_from_path(path):
+    """Given a python source path, return the so-called
+    "sourceless" .pyc or .pyo path.
+
+    This just a .pyc or .pyo file where the .py file would be.
+
+    Even with PEP-3147, which normally puts .pyc/.pyo files in __pycache__,
+    this use case remains supported as a so-called "sourceless module import".
+
+    """
+    if sys.flags.optimize:
+        return path + "o"  # e.g. .pyo
+    else:
+        return path + "c"  # e.g. .pyc
 
 def pyc_file_from_path(path):
     """Given a python source path, locate the .pyc.
@@ -212,7 +248,7 @@ def pyc_file_from_path(path):
     if has3147:
         return imp.cache_from_source(path)
     else:
-        return path + "c"
+        return simple_pyc_file_from_path(path)
 
 def rev_id():
     val = int(uuid.uuid4()) % 100000000000000
@@ -296,7 +332,15 @@ def _with_legacy_names(translations):
                 metadata)
         decorated = eval(code, {"target": go})
         decorated.__defaults__ = getattr(fn, '__func__', fn).__defaults__
-        return update_wrapper(decorated, fn)
+        update_wrapper(decorated, fn)
+        if hasattr(decorated, '__wrapped__'):
+            # update_wrapper in py3k applies __wrapped__, which causes
+            # inspect.getargspec() to ignore the extra arguments on our
+            # wrapper as of Python 3.4.  We need this for the
+            # "module class proxy" thing though, so just del the __wrapped__
+            # for now. See #175 as well as bugs.python.org/issue17482
+            del decorated.__wrapped__
+        return decorated
 
     return decorate
 

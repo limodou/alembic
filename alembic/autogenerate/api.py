@@ -101,7 +101,13 @@ def compare_metadata(context, metadata):
     """
     autogen_context, connection = _autogen_context(context, None)
     diffs = []
-    _produce_net_changes(connection, metadata, diffs, autogen_context)
+
+    object_filters = _get_object_filters(context.opts)
+    include_schemas = context.opts.get('include_schemas', False)
+
+    _produce_net_changes(connection, metadata, diffs, autogen_context,
+                         object_filters, include_schemas)
+
     return diffs
 
 ###################################################
@@ -113,21 +119,9 @@ def _produce_migration_diffs(context, template_args,
                                 include_schemas=False):
     opts = context.opts
     metadata = opts['target_metadata']
-    include_object = opts.get('include_object', include_object)
-    include_symbol = opts.get('include_symbol', include_symbol)
     include_schemas = opts.get('include_schemas', include_schemas)
 
-    object_filters = []
-    if include_symbol:
-        def include_symbol_filter(object, name, type_, reflected, compare_to):
-            if type_ == "table":
-                return include_symbol(name, object.schema)
-            else:
-                return True
-        object_filters.append(include_symbol_filter)
-    if include_object:
-        object_filters.append(include_object)
-
+    object_filters = _get_object_filters(opts, include_symbol, include_object)
 
     if metadata is None:
         raise util.CommandError(
@@ -148,6 +142,25 @@ def _produce_migration_diffs(context, template_args,
     template_args[opts['downgrade_token']] = \
             _indent(_produce_downgrade_commands(diffs, autogen_context))
     template_args['imports'] = "\n".join(sorted(imports))
+
+
+def _get_object_filters(context_opts, include_symbol=None, include_object=None):
+    include_symbol = context_opts.get('include_symbol', include_symbol)
+    include_object = context_opts.get('include_object', include_object)
+
+    object_filters = []
+    if include_symbol:
+        def include_symbol_filter(object, name, type_, reflected, compare_to):
+            if type_ == "table":
+                return include_symbol(name, object.schema)
+            else:
+                return True
+        object_filters.append(include_symbol_filter)
+    if include_object:
+        object_filters.append(include_object)
+
+    return object_filters
+
 
 def _autogen_context(context, imports):
     opts = context.opts
@@ -170,19 +183,22 @@ def _indent(text):
 ###################################################
 # walk structures
 
+
 def _produce_net_changes(connection, metadata, diffs, autogen_context,
                             object_filters=(),
                             include_schemas=False, remove_tables=False):
     inspector = Inspector.from_engine(connection)
     # TODO: not hardcode alembic_version here ?
     conn_table_names = set()
+
+    default_schema = connection.dialect.default_schema_name
     if include_schemas:
         schemas = set(inspector.get_schema_names())
         # replace default schema name with None
         schemas.discard("information_schema")
         # replace the "default" schema with None
         schemas.add(None)
-        schemas.discard(connection.dialect.default_schema_name)
+        schemas.discard(default_schema)
     else:
         schemas = [None]
 

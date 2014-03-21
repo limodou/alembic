@@ -25,6 +25,11 @@ class MSSQLImpl(DefaultImpl):
     def emit_begin(self):
         self.static_output("BEGIN TRANSACTION" + self.command_terminator)
 
+    def emit_commit(self):
+        super(MSSQLImpl, self).emit_commit()
+        if self.as_sql and self.batch_separator:
+            self.static_output(self.batch_separator)
+
     def alter_column(self, table_name, column_name,
                         nullable=None,
                         server_default=False,
@@ -81,19 +86,19 @@ class MSSQLImpl(DefaultImpl):
                                 schema=schema,
                                 name=name)
 
-    def bulk_insert(self, table, rows):
+    def bulk_insert(self, table, rows, **kw):
         if self.as_sql:
             self._exec(
                 "SET IDENTITY_INSERT %s ON" %
                     self.dialect.identifier_preparer.format_table(table)
             )
-            super(MSSQLImpl, self).bulk_insert(table, rows)
+            super(MSSQLImpl, self).bulk_insert(table, rows, **kw)
             self._exec(
                 "SET IDENTITY_INSERT %s OFF" %
                     self.dialect.identifier_preparer.format_table(table)
             )
         else:
-            super(MSSQLImpl, self).bulk_insert(table, rows)
+            super(MSSQLImpl, self).bulk_insert(table, rows, **kw)
 
 
     def drop_column(self, table_name, column, **kw):
@@ -111,6 +116,12 @@ class MSSQLImpl(DefaultImpl):
                         table_name, column,
                         'sys.check_constraints')
             )
+        drop_fks = kw.pop('mssql_drop_foreign_key', False)
+        if drop_fks:
+            self._exec(
+                _exec_drop_col_fk_constraint(self,
+                        table_name, column)
+            )
         super(MSSQLImpl, self).drop_column(table_name, column)
 
 def _exec_drop_col_constraint(impl, tname, colname, type_):
@@ -121,10 +132,24 @@ select @const_name = [name] from %(type)s
 where parent_object_id = object_id('%(tname)s')
 and col_name(parent_object_id, parent_column_id) = '%(colname)s'
 exec('alter table %(tname)s drop constraint ' + @const_name)""" % {
-        'type':type_,
-        'tname':tname,
-        'colname':colname
+        'type': type_,
+        'tname': tname,
+        'colname': colname
     }
+
+def _exec_drop_col_fk_constraint(impl, tname, colname):
+    return """declare @const_name varchar(256)
+select @const_name = [name] from
+    sys.foreign_keys fk join sys.foreign_key_columns fkc
+    on fk.object_id=fkc.constraint_object_id
+where fkc.parent_object_id = object_id('%(tname)s')
+and col_name(fkc.parent_object_id, fkc.parent_column_id) = '%(colname)s'
+exec('alter table %(tname)s drop constraint ' + @const_name)""" % {
+        'tname': tname,
+        'colname': colname
+    }
+
+
 
 @compiles(AddColumn, 'mssql')
 def visit_add_column(element, compiler, **kw):

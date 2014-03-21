@@ -19,12 +19,42 @@ def _compare_tables(conn_table_names, metadata_table_names,
                     object_filters,
                     inspector, metadata, diffs, autogen_context, remove_tables):
 
+    default_schema = inspector.bind.dialect.default_schema_name
+
+    # tables coming from the connection will not have "schema"
+    # set if it matches default_schema_name; so we need a list
+    # of table names from local metadata that also have "None" if schema
+    # == default_schema_name.  Most setups will be like this anyway but
+    # some are not (see #170)
+    metadata_table_names_no_dflt_schema = OrderedSet([
+        (schema if schema != default_schema else None, tname)
+        for schema, tname in metadata_table_names
+    ])
+
+    # to adjust for the MetaData collection storing the tables either
+    # as "schemaname.tablename" or just "tablename", create a new lookup
+    # which will match the "non-default-schema" keys to the Table object.
+    tname_to_table = dict(
+                        (
+                            no_dflt_schema,
+                            metadata.tables[sa_schema._get_table_key(tname, schema)]
+                        )
+                        for no_dflt_schema, (schema, tname) in zip(
+                                    metadata_table_names_no_dflt_schema,
+                                    metadata_table_names)
+                        )
+    metadata_table_names = metadata_table_names_no_dflt_schema
+
     for s, tname in metadata_table_names.difference(conn_table_names):
         name = '%s.%s' % (s, tname) if s else tname
-        metadata_table = metadata.tables[sa_schema._get_table_key(tname, s)]
+        metadata_table = tname_to_table[(s, tname)]
         if _run_filters(metadata_table, tname, "table", False, None, object_filters):
-            diffs.append(("add_table", metadata.tables[name]))
+            diffs.append(("add_table", metadata_table))
             log.info("{{white|green:Detected}} added table %r", name)
+            _compare_indexes_and_uniques(s, tname, object_filters,
+                    None,
+                    metadata_table,
+                    diffs, autogen_context, inspector)
 
     removal_metadata = sa_schema.MetaData()
     for s, tname in conn_table_names.difference(metadata_table_names):
@@ -52,21 +82,18 @@ def _compare_tables(conn_table_names, metadata_table_names,
 
     for s, tname in sorted(existing_tables):
         name = '%s.%s' % (s, tname) if s else tname
-        metadata_table = metadata.tables[name]
+        metadata_table = tname_to_table[(s, tname)]
         conn_table = existing_metadata.tables[name]
+
         if _run_filters(metadata_table, tname, "table", False, conn_table, object_filters):
             _compare_columns(s, tname, object_filters,
                     conn_table,
                     metadata_table,
                     diffs, autogen_context, inspector)
-            c_uniques = _compare_uniques(s, tname,
-                    object_filters, conn_table, metadata_table,
-                    diffs, autogen_context, inspector)
-            _compare_indexes(s, tname, object_filters,
+            _compare_indexes_and_uniques(s, tname, object_filters,
                     conn_table,
                     metadata_table,
-                    diffs, autogen_context, inspector,
-                    c_uniques)
+                    diffs, autogen_context, inspector)
 
     # TODO:
     # table constraints
@@ -145,83 +172,266 @@ def _compare_columns(schema, tname, object_filters, conn_table, metadata_table,
         if col_diff:
             diffs.append(col_diff)
 
-class _uq_constraint_sig(object):
+class _constraint_sig(object):
+    def __eq__(self, other):
+        return self.const == other.const
+
+    def __ne__(self, other):
+        return self.const != other.const
+
+    def __hash__(self):
+        return hash(self.const)
+
+class _uq_constraint_sig(_constraint_sig):
+    is_index = False
+    is_unique = True
+
     def __init__(self, const):
         self.const = const
         self.name = const.name
         self.sig = tuple(sorted([col.name for col in const.columns]))
 
-    def __eq__(self, other):
-        if self.name is not None and other.name is not None:
-            return other.name == self.name
-        else:
-            return self.sig == other.sig
+    @property
+    def column_names(self):
+        return [col.name for col in self.const.columns]
 
-    def __ne__(self, other):
-        return not self.__eq__(other)
+class _ix_constraint_sig(_constraint_sig):
+    is_index = True
 
-    def __hash__(self):
-        return hash(self.sig)
+    def __init__(self, const):
+        self.const = const
+        self.name = const.name
+        self.sig = tuple(sorted([col.name for col in const.columns]))
+        self.is_unique = bool(const.unique)
 
-def _compare_uniques(schema, tname, object_filters, conn_table,
+    @property
+    def column_names(self):
+        return _get_index_column_names(self.const)
+
+def _get_index_column_names(idx):
+    if compat.sqla_08:
+        return [getattr(exp, "name", None) for exp in idx.expressions]
+    else:
+        return [getattr(col, "name", None) for col in idx.columns]
+
+def _compare_indexes_and_uniques(schema, tname, object_filters, conn_table,
             metadata_table, diffs, autogen_context, inspector):
 
-    m_objs = dict(
-        (_uq_constraint_sig(uq), uq) for uq in metadata_table.constraints
-        if isinstance(uq, sa_schema.UniqueConstraint)
-    )
-    m_keys = set(m_objs.keys())
+    is_create_table = conn_table is None
 
-    if hasattr(inspector, "get_unique_constraints"):
+    # 1a. get raw indexes and unique constraints from metadata ...
+    metadata_unique_constraints = set(uq for uq in metadata_table.constraints
+            if isinstance(uq, sa_schema.UniqueConstraint)
+    )
+    metadata_indexes = set(metadata_table.indexes)
+
+    conn_uniques = conn_indexes = frozenset()
+
+    supports_unique_constraints = False
+
+    if conn_table is not None:
+        # 1b. ... and from connection, if the table exists
+        if hasattr(inspector, "get_unique_constraints"):
+            try:
+                conn_uniques = inspector.get_unique_constraints(
+                                                tname, schema=schema)
+                supports_unique_constraints = True
+            except NotImplementedError:
+                pass
         try:
-            conn_uniques = inspector.get_unique_constraints(tname)
+            conn_indexes = inspector.get_indexes(tname, schema=schema)
         except NotImplementedError:
-            return None
-        except NoSuchTableError:
-            conn_uniques = []
-    else:
-        return None
+            pass
 
-    c_objs = dict(
-        (_uq_constraint_sig(uq), uq)
-        for uq in
-        (_make_unique_constraint(uq_def, conn_table) for uq_def in conn_uniques)
+        # 2. convert conn-level objects from raw inspector records
+        # into schema objects
+        conn_uniques = set(_make_unique_constraint(uq_def, conn_table)
+                                        for uq_def in conn_uniques)
+        conn_indexes = set(_make_index(ix, conn_table) for ix in conn_indexes)
+
+    # 3. give the dialect a chance to omit indexes and constraints that
+    # we know are either added implicitly by the DB or that the DB
+    # can't accurately report on
+    autogen_context['context'].impl.\
+                                correct_for_autogen_constraints(
+                                        conn_uniques, conn_indexes,
+                                        metadata_unique_constraints,
+                                        metadata_indexes
+                                )
+
+    # 4. organize the constraints into "signature" collections, the
+    # _constraint_sig() objects provide a consistent facade over both
+    # Index and UniqueConstraint so we can easily work with them
+    # interchangeably
+    metadata_unique_constraints = set(_uq_constraint_sig(uq)
+                                    for uq in metadata_unique_constraints
+                                    )
+
+    metadata_indexes = set(_ix_constraint_sig(ix) for ix in metadata_indexes)
+
+    conn_unique_constraints = set(_uq_constraint_sig(uq) for uq in conn_uniques)
+
+    conn_indexes = set(_ix_constraint_sig(ix) for ix in conn_indexes)
+
+    # 5. index things by name, for those objects that have names
+    metadata_names = dict(
+                        (c.name, c) for c in
+                        metadata_unique_constraints.union(metadata_indexes)
+                        if c.name is not None)
+
+    conn_uniques_by_name = dict((c.name, c) for c in conn_unique_constraints)
+    conn_indexes_by_name = dict((c.name, c) for c in conn_indexes)
+
+    conn_names = dict((c.name, c) for c in
+                    conn_unique_constraints.union(conn_indexes)
+                            if c.name is not None)
+
+    doubled_constraints = dict(
+        (name, (conn_uniques_by_name[name], conn_indexes_by_name[name]))
+        for name in set(conn_uniques_by_name).intersection(conn_indexes_by_name)
     )
-    c_keys = set(c_objs)
 
-    for key in m_keys.difference(c_keys):
-        meta_constraint = m_objs[key]
-        diffs.append(("add_constraint", meta_constraint))
-        log.info("Detected added unique constraint '%s' on %s",
-            key, ', '.join([
-                "'%s'" % y.name for y in meta_constraint.columns
-                ])
-        )
+    # 6. index things by "column signature", to help with unnamed unique
+    # constraints.
+    conn_uniques_by_sig = dict((uq.sig, uq) for uq in conn_unique_constraints)
+    metadata_uniques_by_sig = dict(
+                            (uq.sig, uq) for uq in metadata_unique_constraints)
+    metadata_indexes_by_sig = dict(
+                            (ix.sig, ix) for ix in metadata_indexes)
+    unnamed_metadata_uniques = dict((uq.sig, uq) for uq in
+                            metadata_unique_constraints if uq.name is None)
 
-    for key in c_keys.difference(m_keys):
-        diffs.append(("remove_constraint", c_objs[key]))
-        log.info("Detected removed unique constraint '%s' on '%s'",
-            key, tname
-        )
+    # assumptions:
+    # 1. a unique constraint or an index from the connection *always*
+    #    has a name.
+    # 2. an index on the metadata side *always* has a name.
+    # 3. a unique constraint on the metadata side *might* have a name.
+    # 4. The backend may double up indexes as unique constraints and
+    #    vice versa (e.g. MySQL, Postgresql)
 
-    for key in m_keys.intersection(c_keys):
-        meta_constraint = m_objs[key]
-        conn_constraint = c_objs[key]
-        conn_cols = [col.name for col in conn_constraint.columns]
-        meta_cols = [col.name for col in meta_constraint.columns]
-
-        if meta_cols != conn_cols:
-            diffs.append(("remove_constraint", conn_constraint))
-            diffs.append(("add_constraint", meta_constraint))
-            log.info("Detected changed unique constraint '%s' on '%s':%s",
-                key, tname, ' columns %r to %r' % (conn_cols, meta_cols)
+    def obj_added(obj):
+        if obj.is_index:
+            diffs.append(("add_index", obj.const))
+            #log.info("{{white|green:Detected}} added index '%s' on '%s(%s)'" % (key, tname, ','.join([exp.name for exp in m_objs[key].columns])))
+            log.info("{{white|green:Detected}} added index '%s' on %s(%s)",
+                obj.name, tname, ', '.join(obj.column_names)
+            )
+        else:
+            if not supports_unique_constraints:
+                # can't report unique indexes as added if we don't
+                # detect them
+                return
+            if is_create_table:
+                # unique constraints are created inline with table defs
+                return
+            diffs.append(("add_constraint", obj.const))
+            log.info("{{white|green:Detected}} added unique constraint on %s(%s)",
+                tname, ', '.join(obj.column_names)
             )
 
-    # inspector.get_indexes() can conflate indexes and unique
-    # constraints when unique constraints are implemented by the database
-    # as an index. so we pass uniques to _compare_indexes() for
-    # deduplication
-    return c_keys
+    def obj_removed(obj):
+        if obj.is_index:
+            if obj.is_unique and not supports_unique_constraints:
+                # many databases double up unique constraints
+                # as unique indexes.  without that list we can't
+                # be sure what we're doing here
+                return
+
+            diffs.append(("remove_index", obj.const))
+            log.info("{{white|green:Detected}} removed index '%s' on '%s'", obj.name, tname)
+        else:
+            diffs.append(("remove_constraint", obj.const))
+            log.info("{{white|green:Detected}} removed unique constraint '%s' on '%s'",
+                obj.name, tname
+            )
+
+    def obj_changed(old, new, msg):
+        if old.is_index:
+            # convert between both Nones (SQLA ticket #2825) on the metadata
+            # side and zeroes on the reflection side.
+            if not metadata_table.__mapping_only__:
+                diffs.append(("remove_index", old.const))
+                diffs.append(("add_index", new.const))
+
+            msg = []
+            if new.is_unique is not old.is_unique:
+                msg.append(' unique from %r to %r' % (
+                    old.is_unique, new.is_unique
+                ))
+            if new.column_names != old.column_names:
+                msg.append(' columns from (%s) to (%s)' % (
+                    ', '.join(old.column_names), ', '.join(new.column_names)
+                ))
+            if not metadata_table.__mapping_only__:
+                log.info("{{white|green:Detected}} changed index '%s' on '%s' changes as: %s" % (new.name, tname, ', '.join(msg)))
+            else:
+                log.info("{{white|red:Skipped}} changed index '%s' on '%s' changes as: %s" % (new.name, tname, ', '.join(msg)))
+
+            #log.info("Detected changed index '%s' on '%s':%s",
+            #        old.name, tname, ', '.join(msg)
+            #    )
+            diffs.append(("remove_index", old.const))
+            diffs.append(("add_index", new.const))
+        else:
+            log.info("Detected changed unique constraint '%s' on '%s':%s",
+                    old.name, tname, ', '.join(msg)
+                )
+            diffs.append(("remove_constraint", old.const))
+            diffs.append(("add_constraint", new.const))
+
+    for added_name in sorted(set(metadata_names).difference(conn_names)):
+        obj = metadata_names[added_name]
+        obj_added(obj)
+
+
+    for existing_name in sorted(set(metadata_names).intersection(conn_names)):
+        metadata_obj = metadata_names[existing_name]
+
+        if existing_name in doubled_constraints:
+            conn_uq, conn_idx = doubled_constraints[existing_name]
+            if metadata_obj.is_index:
+                conn_obj = conn_idx
+            else:
+                conn_obj = conn_uq
+        else:
+            conn_obj = conn_names[existing_name]
+
+        if conn_obj.is_index != metadata_obj.is_index:
+            obj_removed(conn_obj)
+            obj_added(metadata_obj)
+        else:
+            msg = []
+            if conn_obj.is_unique != metadata_obj.is_unique:
+                msg.append(' unique=%r to unique=%r' % (
+                    conn_obj.is_unique, metadata_obj.is_unique
+                ))
+            if conn_obj.sig != metadata_obj.sig:
+                msg.append(' columns %r to %r' % (
+                    conn_obj.sig, metadata_obj.sig
+                ))
+
+            if msg:
+                obj_changed(conn_obj, metadata_obj, msg)
+
+
+    for removed_name in sorted(set(conn_names).difference(metadata_names)):
+        conn_obj = conn_names[removed_name]
+        if not conn_obj.is_index and conn_obj.sig in unnamed_metadata_uniques:
+            continue
+        elif removed_name in doubled_constraints:
+            if conn_obj.sig not in metadata_indexes_by_sig and \
+                conn_obj.sig not in metadata_uniques_by_sig:
+                conn_uq, conn_idx = doubled_constraints[removed_name]
+                #drop will failed in mysql
+                #obj_removed(conn_uq)
+                obj_removed(conn_idx)
+        else:
+            obj_removed(conn_obj)
+
+    for uq_sig in unnamed_metadata_uniques:
+        if uq_sig not in conn_uniques_by_sig:
+            obj_added(unnamed_metadata_uniques[uq_sig])
+
 
 def _get_index_column_names(idx):
     if compat.sqla_08:
