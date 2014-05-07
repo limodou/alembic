@@ -190,7 +190,8 @@ def _mysql_drop_constraint(element, compiler, **kw):
     constraint = element.element
     if isinstance(constraint, (schema.ForeignKeyConstraint,
                                 schema.PrimaryKeyConstraint,
-                                schema.UniqueConstraint)
+                                schema.UniqueConstraint,
+				schema.Constraint)
                                 ):
         return compiler.visit_drop_constraint(element, **kw)
     elif isinstance(constraint, schema.CheckConstraint):
