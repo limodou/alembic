@@ -4,6 +4,7 @@ from alembic import op
 from sqlalchemy import Integer, String
 from sqlalchemy.sql import table, column
 from sqlalchemy import Table, Column, MetaData
+from sqlalchemy.types import TypeEngine
 
 from . import op_fixture, eq_, assert_raises_message
 
@@ -72,6 +73,12 @@ def test_bulk_insert_wrong_cols():
         'INSERT INTO ins_table (id, v1, v2) VALUES (%(id)s, %(v1)s, %(v2)s)'
     )
 
+def test_bulk_insert_no_rows():
+    context, t1 = _table_fixture('default', False)
+
+    op.bulk_insert(t1, [])
+    context.assert_()
+
 def test_bulk_insert_pg():
     context = _test_bulk_insert('postgresql', False)
     context.assert_(
@@ -101,6 +108,24 @@ def test_bulk_insert_mssql():
     context.assert_(
         'INSERT INTO ins_table (id, v1, v2) VALUES (:id, :v1, :v2)'
     )
+
+def test_bulk_insert_inline_literal_as_sql():
+    context = op_fixture('postgresql', True)
+
+    class MyType(TypeEngine):
+        pass
+
+    t1 = table('t', column('id', Integer), column('data', MyType()))
+
+    op.bulk_insert(t1, [
+        {'id': 1, 'data': op.inline_literal('d1')},
+        {'id': 2, 'data': op.inline_literal('d2')},
+    ])
+    context.assert_(
+        "INSERT INTO t (id, data) VALUES (1, 'd1')",
+        "INSERT INTO t (id, data) VALUES (2, 'd2')"
+    )
+
 
 def test_bulk_insert_as_sql():
     context = _test_bulk_insert('default', True)
@@ -195,6 +220,25 @@ class RoundTripTest(TestCase):
                 (1, "d1", "x1"),
                 (2, "d2", "x2"),
                 (3, "d3", "x3")
+            ]
+        )
+
+    def test_bulk_insert_inline_literal(self):
+        class MyType(TypeEngine):
+            pass
+
+        t1 = table('foo', column('id', Integer), column('data', MyType()))
+
+        self.op.bulk_insert(t1, [
+            {'id': 1, 'data': self.op.inline_literal('d1')},
+            {'id': 2, 'data': self.op.inline_literal('d2')},
+        ], multiinsert=False)
+
+        eq_(
+            self.conn.execute("select id, data from foo").fetchall(),
+            [
+                (1, "d1"),
+                (2, "d2"),
             ]
         )
 

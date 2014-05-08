@@ -24,8 +24,10 @@ class GeneralOrderedTests(unittest.TestCase):
         def_ = util.rev_id()
         ne_(abc, def_)
 
-    def test_003_heads(self):
+    def test_003_api_methods_clean(self):
         eq_(env.get_heads(), [])
+
+        eq_(env.get_base(), None)
 
     def test_004_rev(self):
         script = env.generate_revision(abc, "this is a message", refresh=True)
@@ -36,6 +38,7 @@ class GeneralOrderedTests(unittest.TestCase):
             os.path.join(env.dir, 'versions', '%s_this_is_a_message.py' % abc), os.F_OK)
         assert callable(script.module.upgrade)
         eq_(env.get_heads(), [abc])
+        eq_(env.get_base(), abc)
 
     def test_005_nextrev(self):
         script = env.generate_revision(def_, "this is the next rev", refresh=True)
@@ -48,6 +51,7 @@ class GeneralOrderedTests(unittest.TestCase):
         assert callable(script.module.upgrade)
         assert callable(script.module.downgrade)
         eq_(env.get_heads(), [def_])
+        eq_(env.get_base(), abc)
 
     def test_006_from_clean_env(self):
         # test the environment so far with a
@@ -60,6 +64,7 @@ class GeneralOrderedTests(unittest.TestCase):
         eq_(abc_rev.revision, abc)
         eq_(def_rev.down_revision, abc)
         eq_(env.get_heads(), [def_])
+        eq_(env.get_base(), abc)
 
     def test_007_no_refresh(self):
         rid = util.rev_id()
@@ -76,7 +81,22 @@ class GeneralOrderedTests(unittest.TestCase):
                 "I'd like it to\nhave\nnewlines")
         assert os.access(
             os.path.join(env.dir, 'versions',
-                        '%s_this_is_a_really_lon.py' % rid), os.F_OK)
+                    '%s_this_is_a_really_long_name_with_lots_of_.py' % rid),
+                os.F_OK)
+
+
+    def test_009_long_name_configurable(self):
+        env.truncate_slug_length = 60
+        rid = util.rev_id()
+        env.generate_revision(rid,
+                "this is a really long name with "
+                "lots of characters and also "
+                "I'd like it to\nhave\nnewlines")
+        assert os.access(
+            os.path.join(env.dir, 'versions',
+                    '%s_this_is_a_really_long_name_with_lots_'
+                    'of_characters_and_also_.py' % rid),
+                os.F_OK)
 
 
     @classmethod

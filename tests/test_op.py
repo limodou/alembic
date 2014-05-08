@@ -1,12 +1,13 @@
 """Test against the builders in the op.* module."""
 
 from sqlalchemy import Integer, Column, ForeignKey, \
-            Table, String, Boolean
+            Table, String, Boolean, MetaData, CheckConstraint
 from sqlalchemy.sql import column, func, text
 from sqlalchemy import event
 
 from alembic import op
-from . import op_fixture, assert_raises_message
+from . import op_fixture, assert_raises_message, requires_094, eq_
+from . import mock
 
 @event.listens_for(Table, "after_parent_attach")
 def _add_cols(table, metadata):
@@ -93,6 +94,7 @@ def test_add_column_schema_type():
         'ALTER TABLE t1 ADD COLUMN c1 BOOLEAN NOT NULL',
         'ALTER TABLE t1 ADD CHECK (c1 IN (0, 1))'
     )
+
 
 def test_add_column_schema_schema_type():
     """Test that a schema type generates its constraints...."""
@@ -396,6 +398,38 @@ def test_add_foreign_key_deferrable():
             "REFERENCES t2 (bat, hoho) DEFERRABLE"
     )
 
+def test_add_foreign_key_initially():
+    context = op_fixture()
+    op.create_foreign_key('fk_test', 't1', 't2',
+                    ['foo', 'bar'], ['bat', 'hoho'],
+                    initially='INITIAL')
+    context.assert_(
+        "ALTER TABLE t1 ADD CONSTRAINT fk_test FOREIGN KEY(foo, bar) "
+            "REFERENCES t2 (bat, hoho) INITIALLY INITIAL"
+    )
+
+def test_add_foreign_key_match():
+    context = op_fixture()
+    op.create_foreign_key('fk_test', 't1', 't2',
+                    ['foo', 'bar'], ['bat', 'hoho'],
+                    match='SIMPLE')
+    context.assert_(
+        "ALTER TABLE t1 ADD CONSTRAINT fk_test FOREIGN KEY(foo, bar) "
+            "REFERENCES t2 (bat, hoho) MATCH SIMPLE"
+    )
+
+def test_add_foreign_key_dialect_kw():
+    context = op_fixture()
+    with mock.patch("alembic.operations.sa_schema.ForeignKeyConstraint") as fkc:
+        op.create_foreign_key('fk_test', 't1', 't2',
+                        ['foo', 'bar'], ['bat', 'hoho'],
+                        foobar_arg='xyz')
+        eq_(fkc.mock_calls[0],
+                mock.call(['foo', 'bar'], ['t2.bat', 't2.hoho'],
+                    onupdate=None, ondelete=None, name='fk_test',
+                    foobar_arg='xyz',
+                    deferrable=None, initially=None, match=None))
+
 def test_add_foreign_key_self_referential():
     context = op_fixture()
     op.create_foreign_key("fk_test", "t1", "t1", ["foo"], ["bar"])
@@ -417,6 +451,7 @@ def test_add_primary_key_constraint_schema():
     context.assert_(
         "ALTER TABLE bar.t1 ADD CONSTRAINT pk_test PRIMARY KEY (foo)"
     )
+
 
 def test_add_check_constraint():
     context = op_fixture()
@@ -642,11 +677,7 @@ def test_naming_changes():
 
     context = op_fixture('mssql')
     op.drop_index('ik_test', tablename='t1')
-    context.assert_("DROP INDEX [t1].ik_test")
-
-    context = op_fixture('mssql')
-    op.drop_index('ik_test', table_name='t1')
-    context.assert_("DROP INDEX [t1].ik_test")
+    context.assert_("DROP INDEX ik_test ON t1")
 
     context = op_fixture('mysql')
     op.drop_constraint("f1", "t1", type="foreignkey")

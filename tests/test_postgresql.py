@@ -2,18 +2,19 @@ from unittest import TestCase
 
 from sqlalchemy import DateTime, MetaData, Table, Column, text, Integer, String
 from sqlalchemy.engine.reflection import Inspector
+from alembic.operations import Operations
+from sqlalchemy.sql import table, column
 
 from alembic import command, util
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from . import db_for_dialect, eq_, staging_env, \
             clear_staging_env, _no_sql_testing_config,\
-            capture_context_buffer, requires_07, write_script
+            capture_context_buffer, requires_09, write_script
 
 class PGOfflineEnumTest(TestCase):
-    @requires_07
     def setUp(self):
-        env = staging_env()
+        staging_env()
         self.cfg = cfg = _no_sql_testing_config()
 
         self.rid = rid = util.rev_id()
@@ -65,11 +66,12 @@ def downgrade():
 
 """ % self.rid)
 
+    @requires_09
     def test_offline_inline_enum_create(self):
         self._inline_enum_script()
         with capture_context_buffer() as buf:
             command.upgrade(self.cfg, self.rid, sql=True)
-        assert "CREATE TYPE pgenum AS ENUM ('one','two','three')" in buf.getvalue()
+        assert "CREATE TYPE pgenum AS ENUM ('one', 'two', 'three')" in buf.getvalue()
         assert "CREATE TABLE sometable (\n    data pgenum\n)" in buf.getvalue()
 
     def test_offline_inline_enum_drop(self):
@@ -80,11 +82,12 @@ def downgrade():
         # no drop since we didn't emit events
         assert "DROP TYPE pgenum" not in buf.getvalue()
 
+    @requires_09
     def test_offline_distinct_enum_create(self):
         self._distinct_enum_script()
         with capture_context_buffer() as buf:
             command.upgrade(self.cfg, self.rid, sql=True)
-        assert "CREATE TYPE pgenum AS ENUM ('one','two','three')" in buf.getvalue()
+        assert "CREATE TYPE pgenum AS ENUM ('one', 'two', 'three')" in buf.getvalue()
         assert "CREATE TABLE sometable (\n    data pgenum\n)" in buf.getvalue()
 
     def test_offline_distinct_enum_drop(self):
@@ -94,9 +97,6 @@ def downgrade():
         assert "DROP TABLE sometable" in buf.getvalue()
         assert "DROP TYPE pgenum" in buf.getvalue()
 
-from alembic.migration import MigrationContext
-from alembic.operations import Operations
-from sqlalchemy.sql import table, column
 
 class PostgresqlInlineLiteralTest(TestCase):
     @classmethod
@@ -133,7 +133,7 @@ class PostgresqlInlineLiteralTest(TestCase):
             tab.update().where(
                 tab.c.col.like(self.op.inline_literal('%.%'))
             ).values(col=self.op.inline_literal('new data')),
-            execution_options={'no_parameters':True}
+            execution_options={'no_parameters': True}
         )
         eq_(
             self.conn.execute("select count(*) from tab where col='new data'").scalar(),
@@ -146,18 +146,18 @@ class PostgresqlDefaultCompareTest(TestCase):
         cls.bind = db_for_dialect("postgresql")
         staging_env()
         context = MigrationContext.configure(
-            connection = cls.bind.connect(),
-            opts = {
-                'compare_type':True,
-                'compare_server_default':True
+            connection=cls.bind.connect(),
+            opts={
+                'compare_type': True,
+                'compare_server_default': True
             }
         )
         connection = context.bind
         cls.autogen_context = {
-            'imports':set(),
-            'connection':connection,
-            'dialect':connection.dialect,
-            'context':context
+            'imports': set(),
+            'connection': connection,
+            'dialect': connection.dialect,
+            'context': context
             }
 
     @classmethod
@@ -170,8 +170,7 @@ class PostgresqlDefaultCompareTest(TestCase):
     def tearDown(self):
         self.metadata.drop_all()
 
-    def _compare_default_roundtrip(
-        self, type_, txt, alternate=None):
+    def _compare_default_roundtrip(self, type_, txt, alternate=None):
         if alternate:
             expected = True
         else:
@@ -201,12 +200,6 @@ class PostgresqlDefaultCompareTest(TestCase):
             col,
             rendered,
             cols[0]['default'])
-
-    def test_compare_current_timestamp(self):
-        self._compare_default_roundtrip(
-            DateTime(),
-            "TIMEZONE('utc', CURRENT_TIMESTAMP)",
-        )
 
     def test_compare_current_timestamp(self):
         self._compare_default_roundtrip(

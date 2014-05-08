@@ -8,6 +8,8 @@ from . import clear_staging_env, staging_env, \
     assert_raises_message
 
 class VersioningTest(unittest.TestCase):
+    sourceless = False
+
     def test_001_revisions(self):
         global a, b, c
         a = util.rev_id()
@@ -28,7 +30,7 @@ class VersioningTest(unittest.TestCase):
     def downgrade():
         op.execute("DROP TABLE foo")
 
-    """ % a)
+    """ % a, sourceless=self.sourceless)
 
         script.generate_revision(b, None, refresh=True)
         write_script(script, b, """
@@ -43,7 +45,7 @@ class VersioningTest(unittest.TestCase):
     def downgrade():
         op.execute("DROP TABLE bar")
 
-    """ % (b, a))
+    """ % (b, a), sourceless=self.sourceless)
 
         script.generate_revision(c, None, refresh=True)
         write_script(script, c, """
@@ -58,7 +60,7 @@ class VersioningTest(unittest.TestCase):
     def downgrade():
         op.execute("DROP TABLE bat")
 
-    """ % (c, b))
+    """ % (c, b), sourceless=self.sourceless)
 
 
     def test_002_upgrade(self):
@@ -97,8 +99,8 @@ class VersioningTest(unittest.TestCase):
 
     @classmethod
     def setup_class(cls):
-        cls.env = staging_env()
-        cls.cfg = _sqlite_testing_config()
+        cls.env = staging_env(sourceless=cls.sourceless)
+        cls.cfg = _sqlite_testing_config(sourceless=cls.sourceless)
 
     @classmethod
     def teardown_class(cls):
@@ -182,3 +184,40 @@ class VersionNameTemplateTest(unittest.TestCase):
 
         """)
 
+
+class SourcelessVersioningTest(VersioningTest):
+    sourceless = True
+
+class SourcelessNeedsFlagTest(unittest.TestCase):
+    def setUp(self):
+        self.env = staging_env(sourceless=False)
+        self.cfg = _sqlite_testing_config()
+
+    def tearDown(self):
+        clear_staging_env()
+
+    def test_needs_flag(self):
+        a = util.rev_id()
+
+        script = ScriptDirectory.from_config(self.cfg)
+        script.generate_revision(a, None, refresh=True)
+        write_script(script, a, """
+    revision = '%s'
+    down_revision = None
+
+    from alembic import op
+
+    def upgrade():
+        op.execute("CREATE TABLE foo(id integer)")
+
+    def downgrade():
+        op.execute("DROP TABLE foo")
+
+    """ % a, sourceless=True)
+
+        script = ScriptDirectory.from_config(self.cfg)
+        eq_(script.get_heads(), [])
+
+        self.cfg.set_main_option("sourceless", "true")
+        script = ScriptDirectory.from_config(self.cfg)
+        eq_(script.get_heads(), [a])

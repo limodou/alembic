@@ -29,9 +29,9 @@ try:
 except ImportError:
     requires.append('argparse')
 
-setup(name='alembic',
+setup(name='uliweb-alembic',
       version=VERSION,
-      description="A database migration tool for SQLAlchemy.",
+      description="A port of alembic for uliweb framework.",
       long_description=open(readme).read(),
       classifiers=[
       'Development Status :: 4 - Beta',
@@ -44,9 +44,9 @@ setup(name='alembic',
       'Topic :: Database :: Front-Ends',
       ],
       keywords='SQLAlchemy migrations',
-      author='Mike Bayer',
-      author_email='mike@zzzcomputing.com',
-      url='http://bitbucket.org/zzzeek/alembic',
+      author='limodou',
+      author_email='limodou@gmail.com',
+      url='https://github.com/limodou/uliweb-alembic',
       license='MIT',
       packages=find_packages('.', exclude=['examples*', 'test*']),
       include_package_data=True,

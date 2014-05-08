@@ -7,7 +7,7 @@ import textwrap
 
 from nose import SkipTest
 from sqlalchemy.engine import default
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, MetaData
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.util import decorator
 
@@ -20,6 +20,7 @@ from alembic.environment import EnvironmentContext
 from alembic.operations import Operations
 from alembic.script import ScriptDirectory, Script
 from alembic.ddl.impl import _impls
+from contextlib import contextmanager
 
 staging_directory = os.path.join(os.path.dirname(__file__), 'scratch')
 files_directory = os.path.join(os.path.dirname(__file__), 'files')
@@ -29,9 +30,11 @@ testing_config.read(['test.cfg'])
 
 if py33:
     from unittest.mock import Mock, call
+    from unittest import mock
 else:
     try:
         from mock import Mock, call
+        import mock
     except ImportError:
         raise ImportError(
                 "Alembic's test suite requires the "
@@ -72,16 +75,29 @@ def db_for_dialect(name):
         _engs[name] = eng
         return eng
 
-@decorator
-def requires_07(fn, *arg, **kw):
-    if not util.sqla_07:
-        raise SkipTest("SQLAlchemy 0.7 required")
-    return fn(*arg, **kw)
 
 @decorator
 def requires_08(fn, *arg, **kw):
     if not util.sqla_08:
         raise SkipTest("SQLAlchemy 0.8.0b2 or greater required")
+    return fn(*arg, **kw)
+
+@decorator
+def requires_09(fn, *arg, **kw):
+    if not util.sqla_09:
+        raise SkipTest("SQLAlchemy 0.9 or greater required")
+    return fn(*arg, **kw)
+
+@decorator
+def requires_092(fn, *arg, **kw):
+    if not util.sqla_092:
+        raise SkipTest("SQLAlchemy 0.9.2 or greater required")
+    return fn(*arg, **kw)
+
+@decorator
+def requires_094(fn, *arg, **kw):
+    if not util.sqla_094:
+        raise SkipTest("SQLAlchemy 0.9.4 or greater required")
     return fn(*arg, **kw)
 
 _dialects = {}
@@ -106,25 +122,24 @@ def assert_compiled(element, assert_string, dialect=None):
         assert_string.replace("\n", "").replace("\t", "")
     )
 
+@contextmanager
 def capture_context_buffer(**kw):
     if kw.pop('bytes_io', False):
         buf = io.BytesIO()
     else:
         buf = io.StringIO()
 
-    class capture(object):
-        def __enter__(self):
-            EnvironmentContext._default_opts = {
+    kw.update({
                 'dialect_name': "sqlite",
                 'output_buffer': buf
-            }
-            EnvironmentContext._default_opts.update(kw)
-            return buf
+    })
+    conf = EnvironmentContext.configure
+    def configure(*arg, **opt):
+        opt.update(**kw)
+        return conf(*arg, **opt)
 
-        def __exit__(self, *arg, **kwarg):
-            EnvironmentContext._default_opts = None
-
-    return capture()
+    with mock.patch.object(EnvironmentContext, "configure", configure):
+        yield buf
 
 def eq_ignore_whitespace(a, b, msg=None):
     a = re.sub(r'^\s+?|\n', "", a)
@@ -153,7 +168,7 @@ def assert_raises_message(except_cls, msg, callable_, *args, **kwargs):
         assert re.search(msg, str(e)), "%r !~ %s" % (msg, e)
         print(text_type(e))
 
-def op_fixture(dialect='default', as_sql=False):
+def op_fixture(dialect='default', as_sql=False, naming_convention=None):
     impl = _impls[dialect]
     class Impl(impl):
         def __init__(self, dialect, as_sql):
@@ -167,18 +182,26 @@ def op_fixture(dialect='default', as_sql=False):
         def _exec(self, construct, *args, **kw):
             if isinstance(construct, string_types):
                 construct = text(construct)
+            assert construct.supports_execution
             sql = text_type(construct.compile(dialect=self.dialect))
             sql = re.sub(r'[\n\t]', '', sql)
             self.assertion.append(
                 sql
             )
 
+    opts = {}
+    if naming_convention:
+        if not util.sqla_092:
+            raise SkipTest(
+                        "naming_convention feature requires "
+                        "sqla 0.9.2 or greater")
+        opts['target_metadata'] = MetaData(naming_convention=naming_convention)
 
     class ctx(MigrationContext):
         def __init__(self, dialect='default', as_sql=False):
             self.dialect = _get_dialect(dialect)
             self.impl = Impl(self.dialect, as_sql)
-
+            self.opts = opts
             self.as_sql = as_sql
 
         def assert_(self, *sql):
@@ -221,12 +244,13 @@ config = context.config
     with open(path, 'w') as f:
         f.write(txt)
 
-def _sqlite_testing_config():
+def _sqlite_testing_config(sourceless=False):
     dir_ = os.path.join(staging_directory, 'scripts')
     return _write_config_file("""
 [alembic]
 script_location = %s
 sqlalchemy.url = sqlite:///%s/foo.db
+sourceless = %s
 
 [loggers]
 keys = root
@@ -251,7 +275,7 @@ keys = generic
 [formatter_generic]
 format = %%(levelname)-5.5s [%%(name)s] %%(message)s
 datefmt = %%H:%%M:%%S
-    """ % (dir_, dir_))
+    """ % (dir_, dir_, "true" if sourceless else "false"))
 
 
 def _no_sql_testing_config(dialect="postgresql", directives=""):
@@ -302,7 +326,7 @@ def _testing_config():
     return Config(os.path.join(staging_directory, 'test_alembic.ini'))
 
 
-def staging_env(create=True, template="generic"):
+def staging_env(create=True, template="generic", sourceless=False):
     from alembic import command, script
     cfg = _testing_config()
     if create:
@@ -310,6 +334,19 @@ def staging_env(create=True, template="generic"):
         if os.path.exists(path):
             shutil.rmtree(path)
         command.init(cfg, path)
+        if sourceless:
+            try:
+                # do an import so that a .pyc/.pyo is generated.
+                util.load_python_file(path, 'env.py')
+            except AttributeError:
+                # we don't have the migration context set up yet
+                # so running the .env py throws this exception.
+                # theoretically we could be using py_compiler here to
+                # generate .pyc/.pyo without importing but not really
+                # worth it.
+                pass
+            make_sourceless(os.path.join(path, "env.py"))
+
     sc = script.ScriptDirectory.from_config(cfg)
     return sc
 
@@ -317,7 +354,7 @@ def clear_staging_env():
     shutil.rmtree(staging_directory, True)
 
 
-def write_script(scriptdir, rev_id, content, encoding='ascii'):
+def write_script(scriptdir, rev_id, content, encoding='ascii', sourceless=False):
     old = scriptdir._revision_map[rev_id]
     path = old.path
 
@@ -329,7 +366,7 @@ def write_script(scriptdir, rev_id, content, encoding='ascii'):
     pyc_path = util.pyc_file_from_path(path)
     if os.access(pyc_path, os.F_OK):
         os.unlink(pyc_path)
-    script = Script._from_path(path)
+    script = Script._from_path(scriptdir, path)
     old = scriptdir._revision_map[script.revision]
     if old.down_revision != script.down_revision:
         raise Exception("Can't change down_revision "
@@ -337,6 +374,22 @@ def write_script(scriptdir, rev_id, content, encoding='ascii'):
     scriptdir._revision_map[script.revision] = script
     script.nextrev = old.nextrev
 
+    if sourceless:
+        make_sourceless(path)
+
+def make_sourceless(path):
+    # note that if -O is set, you'd see pyo files here,
+    # the pyc util function looks at sys.flags.optimize to handle this
+    pyc_path = util.pyc_file_from_path(path)
+    assert os.access(pyc_path, os.F_OK)
+
+    # look for a non-pep3147 path here.
+    # if not present, need to copy from __pycache__
+    simple_pyc_path = util.simple_pyc_file_from_path(path)
+
+    if not os.access(simple_pyc_path, os.F_OK):
+        shutil.copyfile(pyc_path, simple_pyc_path)
+    os.unlink(path)
 
 def three_rev_fixture(cfg):
     a = util.rev_id()

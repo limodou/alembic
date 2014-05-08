@@ -131,17 +131,11 @@ def _compare_columns(schema, tname, object_filters, conn_table, metadata_table,
                 log.info("{{white|red:Skipped}} added column '%s.%s'", name, cname)
 
     for cname in set(conn_col_names).difference(metadata_col_names):
-        rem_col = sa_schema.Column(
-                    cname,
-                    conn_table.c[cname].type,
-                    nullable=conn_table.c[cname].nullable,
-                    server_default=conn_table.c[cname].server_default
-                )
-        if _run_filters(rem_col, cname,
+        if _run_filters(conn_table.c[cname], cname,
                                 "column", True, None, object_filters):
             if not metadata_table.__mapping_only__:
                 diffs.append(
-                    ("remove_column", schema, tname, rem_col)
+                    ("remove_column", schema, tname, conn_table.c[cname])
                 )
                 log.info("{{white|green:Detected}} removed column '%s.%s'", name, cname)
             else:
@@ -423,7 +417,7 @@ def _compare_indexes_and_uniques(schema, tname, object_filters, conn_table,
                 conn_obj.sig not in metadata_uniques_by_sig:
                 conn_uq, conn_idx = doubled_constraints[removed_name]
                 #drop will failed in mysql
-                #obj_removed(conn_uq)
+                obj_removed(conn_uq)
                 obj_removed(conn_idx)
         else:
             obj_removed(conn_obj)
@@ -431,93 +425,6 @@ def _compare_indexes_and_uniques(schema, tname, object_filters, conn_table,
     for uq_sig in unnamed_metadata_uniques:
         if uq_sig not in conn_uniques_by_sig:
             obj_added(unnamed_metadata_uniques[uq_sig])
-
-
-def _get_index_column_names(idx):
-    if compat.sqla_08:
-        return [exp.name for exp in idx.expressions]
-    else:
-        return [col.name for col in idx.columns]
-
-def _compare_indexes(schema, tname, object_filters, conn_table,
-            metadata_table, diffs, autogen_context, inspector,
-            c_uniques_keys):
-
-
-
-    try:
-        reflected_indexes = inspector.get_indexes(tname)
-    except NoSuchTableError:
-        c_objs = {}
-    else:
-        c_objs = dict(
-            (i['name'], _make_index(i, conn_table))
-            for i in reflected_indexes
-        )
-
-    m_objs = dict((i.name, i) for i in metadata_table.indexes)
-
-    # deduplicate between conn uniques and indexes, because either:
-    #   1. a backend reports uniques as indexes, because uniques
-    #      are implemented as a type of index.
-    #   2. our backend and/or SQLA version does not reflect uniques
-    # in either case, we need to avoid comparing a connection index
-    # for what we can tell from the metadata is meant as a unique constraint
-    if c_uniques_keys is None:
-        c_uniques_keys = set(
-            i.name for i in metadata_table.constraints \
-            if isinstance(i, sa_schema.UniqueConstraint) and i.name is not None
-        )
-    else:
-        c_uniques_keys = set(uq.name for uq in c_uniques_keys if uq.name is not None)
-
-    c_keys = set(c_objs).difference(c_uniques_keys)
-    m_keys = set(m_objs).difference(c_uniques_keys)
-
-    for key in m_keys.difference(c_keys):
-        meta = m_objs[key]
-        if not metadata_table.__mapping_only__:
-            diffs.append(("add_index", meta))
-            log.info("{{white|green:Detected}} added index '%s' on '%s(%s)'" % (key, tname, ','.join([exp.name for exp in m_objs[key].columns])))
-        else:
-            log.info("{{white|red:Skipped}} added index '%s' on '%s(%s)'" % (key, tname, ','.join([exp.name for exp in m_objs[key].columns])))
-
-    for key in c_keys.difference(m_keys):
-        if not metadata_table.__mapping_only__:
-            diffs.append(("remove_index", c_objs[key]))
-            log.info("{{white|green:Detected}} removed index '%s' on '%s'" % (key, tname))
-        else:
-            log.info("{{white|red:Skipped}} removed index '%s' on '%s'" % (key, tname))
-
-    for key in m_keys.intersection(c_keys):
-        meta_index = m_objs[key]
-        conn_index = c_objs[key]
-        # TODO: why don't we just render the DDL here
-        # so we can compare the string output fully
-        conn_exps = _get_index_column_names(conn_index)
-        meta_exps = _get_index_column_names(meta_index)
-
-        # convert between both Nones (SQLA ticket #2825) on the metadata
-        # side and zeroes on the reflection side.
-        if bool(meta_index.unique) is not bool(conn_index.unique) \
-                or meta_exps != conn_exps:
-            if not metadata_table.__mapping_only__:
-                diffs.append(("remove_index", conn_index))
-                diffs.append(("add_index", meta_index))
-
-            msg = []
-            if meta_index.unique is not conn_index.unique:
-                msg.append(' unique=%r to unique=%r' % (
-                    conn_index.unique, meta_index.unique
-                ))
-            if meta_exps != conn_exps:
-                msg.append(' columns %r to %r' % (
-                    conn_exps, meta_exps
-                ))
-            if not metadata_table.__mapping_only__:
-                log.info("{{white|green:Detected}} changed index '%s' on '%s' changes as: '%s'" % (key, tname, ', '.join(msg)))
-            else:
-                log.info("{{white|red:Skipped}} changed index '%s' on '%s' changes as: '%s'" % (key, tname, ', '.join(msg)))
 
 
 def _compare_nullable(schema, tname, cname, conn_col,
@@ -621,7 +528,6 @@ def _compare_server_default(schema, tname, cname, conn_col, metadata_col,
                             metadata_default, autogen_context)
 #    rendered_conn_default = conn_col.server_default.arg.text \
 #                            if conn_col.server_default else None
-#    import pdb; pdb.set_trace()
     rendered_conn_default = _render_server_default(
                             conn_col_default, autogen_context)
     isdiff = autogen_context['context']._compare_server_default(
