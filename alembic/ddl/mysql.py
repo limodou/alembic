@@ -6,9 +6,10 @@ from ..compat import string_types
 from .. import util
 from .impl import DefaultImpl
 from .base import ColumnNullable, ColumnName, ColumnDefault, \
-            ColumnType, AlterColumn, format_column_name, \
-            format_server_default
+    ColumnType, AlterColumn, format_column_name, \
+    format_server_default
 from .base import alter_table
+
 
 class MySQLImpl(DefaultImpl):
     __dialect__ = 'mysql'
@@ -16,17 +17,17 @@ class MySQLImpl(DefaultImpl):
     transactional_ddl = False
 
     def alter_column(self, table_name, column_name,
-                        nullable=None,
-                        server_default=False,
-                        name=None,
-                        type_=None,
-                        schema=None,
-                        autoincrement=None,
-                        existing_type=None,
-                        existing_server_default=None,
-                        existing_nullable=None,
-                        existing_autoincrement=None
-                    ):
+                     nullable=None,
+                     server_default=False,
+                     name=None,
+                     type_=None,
+                     schema=None,
+                     autoincrement=None,
+                     existing_type=None,
+                     existing_server_default=None,
+                     existing_nullable=None,
+                     existing_autoincrement=None
+                     ):
         if name is not None:
             self._exec(
                 MySQLChangeColumn(
@@ -34,33 +35,33 @@ class MySQLImpl(DefaultImpl):
                     schema=schema,
                     newname=name,
                     nullable=nullable if nullable is not None else
-                                    existing_nullable
-                                    if existing_nullable is not None
-                                    else True,
+                    existing_nullable
+                    if existing_nullable is not None
+                    else True,
                     type_=type_ if type_ is not None else existing_type,
                     default=server_default if server_default is not False
-                                                else existing_server_default,
+                    else existing_server_default,
                     autoincrement=autoincrement if autoincrement is not None
-                                                else existing_autoincrement
+                    else existing_autoincrement
                 )
             )
         elif nullable is not None or \
-            type_ is not None or \
-            autoincrement is not None:
+                type_ is not None or \
+                autoincrement is not None:
             self._exec(
                 MySQLModifyColumn(
                     table_name, column_name,
                     schema=schema,
                     newname=name if name is not None else column_name,
                     nullable=nullable if nullable is not None else
-                                    existing_nullable
-                                    if existing_nullable is not None
-                                    else True,
+                    existing_nullable
+                    if existing_nullable is not None
+                    else True,
                     type_=type_ if type_ is not None else existing_type,
                     default=server_default if server_default is not False
-                                                else existing_server_default,
+                    else existing_server_default,
                     autoincrement=autoincrement if autoincrement is not None
-                                                else existing_autoincrement
+                    else existing_autoincrement
                 )
             )
         elif server_default is not False:
@@ -78,10 +79,19 @@ class MySQLImpl(DefaultImpl):
         removed = set()
         for idx in list(conn_indexes):
             # MySQL puts implicit indexes on FK columns, even if
-            # composite and even if MyISAM, so can't check this too easily
-            if idx.name == idx.columns.keys()[0]:
-                conn_indexes.remove(idx)
-                removed.add(idx.name)
+            # composite and even if MyISAM, so can't check this too easily.
+            # the name of the index may be the column name or it may
+            # be the name of the FK constraint.
+            for col in idx.columns:
+                if idx.name == col.name:
+                    conn_indexes.remove(idx)
+                    removed.add(idx.name)
+                    break
+                for fk in col.foreign_keys:
+                    if fk.name == idx.name:
+                        conn_indexes.remove(idx)
+                        removed.add(idx.name)
+                        break
 
         # then remove indexes from the "metadata_indexes"
         # that we've removed from reflected, otherwise they come out
@@ -90,7 +100,9 @@ class MySQLImpl(DefaultImpl):
             if idx.name in removed:
                 metadata_indexes.remove(idx)
 
+
 class MySQLAlterDefault(AlterColumn):
+
     def __init__(self, name, column_name, default, schema=None):
         super(AlterColumn, self).__init__(name, schema=schema)
         self.column_name = column_name
@@ -98,12 +110,13 @@ class MySQLAlterDefault(AlterColumn):
 
 
 class MySQLChangeColumn(AlterColumn):
+
     def __init__(self, name, column_name, schema=None,
-                        newname=None,
-                        type_=None,
-                        nullable=None,
-                        default=False,
-                        autoincrement=None):
+                 newname=None,
+                 type_=None,
+                 nullable=None,
+                 default=False,
+                 autoincrement=None):
         super(AlterColumn, self).__init__(name, schema=schema)
         self.column_name = column_name
         self.nullable = nullable
@@ -118,6 +131,7 @@ class MySQLChangeColumn(AlterColumn):
 
         self.type_ = sqltypes.to_instance(type_)
 
+
 class MySQLModifyColumn(MySQLChangeColumn):
     pass
 
@@ -128,8 +142,8 @@ class MySQLModifyColumn(MySQLChangeColumn):
 @compiles(ColumnType, 'mysql')
 def _mysql_doesnt_support_individual(element, compiler, **kw):
     raise NotImplementedError(
-            "Individual alter column constructs not supported by MySQL"
-        )
+        "Individual alter column constructs not supported by MySQL"
+    )
 
 
 @compiles(MySQLAlterDefault, "mysql")
@@ -138,9 +152,10 @@ def _mysql_alter_default(element, compiler, **kw):
         alter_table(compiler, element.table_name, element.schema),
         format_column_name(compiler, element.column_name),
         "SET DEFAULT %s" % format_server_default(compiler, element.default)
-             if element.default is not None
-            else "DROP DEFAULT"
+        if element.default is not None
+        else "DROP DEFAULT"
     )
+
 
 @compiles(MySQLModifyColumn, "mysql")
 def _mysql_modify_column(element, compiler, **kw):
@@ -172,14 +187,16 @@ def _mysql_change_column(element, compiler, **kw):
         ),
     )
 
+
 def _render_value(compiler, expr):
     if isinstance(expr, string_types):
         return "'%s'" % expr
     else:
         return compiler.sql_compiler.process(expr)
 
+
 def _mysql_colspec(compiler, nullable, server_default, type_,
-                                        autoincrement):
+                   autoincrement):
     spec = "%s %s" % (
         compiler.dialect.type_compiler.process(type_),
         "NULL" if nullable else "NOT NULL"
@@ -191,6 +208,7 @@ def _mysql_colspec(compiler, nullable, server_default, type_,
 
     return spec
 
+
 @compiles(schema.DropConstraint, "mysql")
 def _mysql_drop_constraint(element, compiler, **kw):
     """Redefine SQLAlchemy's drop constraint to
@@ -198,16 +216,14 @@ def _mysql_drop_constraint(element, compiler, **kw):
 
     constraint = element.element
     if isinstance(constraint, (schema.ForeignKeyConstraint,
-                                schema.PrimaryKeyConstraint,
-                                schema.UniqueConstraint,
-				schema.Constraint)
-                                ):
+                               schema.PrimaryKeyConstraint,
+                               schema.UniqueConstraint)
+                  ):
         return compiler.visit_drop_constraint(element, **kw)
     elif isinstance(constraint, schema.CheckConstraint):
         raise NotImplementedError(
-                "MySQL does not support CHECK constraints.")
+            "MySQL does not support CHECK constraints.")
     else:
         raise NotImplementedError(
-                "No generic 'DROP CONSTRAINT' in MySQL - "
-                "please specify constraint type")
-
+            "No generic 'DROP CONSTRAINT' in MySQL - "
+            "please specify constraint type")

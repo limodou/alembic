@@ -7,10 +7,13 @@ from . import op_fixture, assert_raises_message, db_for_dialect, \
     staging_env, clear_staging_env
 from alembic.migration import MigrationContext
 
+
 class MySQLOpTest(TestCase):
+
     def test_rename_column(self):
         context = op_fixture('mysql')
-        op.alter_column('t1', 'c1', new_column_name="c2", existing_type=Integer)
+        op.alter_column(
+            't1', 'c1', new_column_name="c2", existing_type=Integer)
         context.assert_(
             'ALTER TABLE t1 CHANGE c1 c2 INTEGER NULL'
         )
@@ -18,7 +21,7 @@ class MySQLOpTest(TestCase):
     def test_rename_column_quotes_needed_one(self):
         context = op_fixture('mysql')
         op.alter_column('MyTable', 'ColumnOne', new_column_name="ColumnTwo",
-                                existing_type=Integer)
+                        existing_type=Integer)
         context.assert_(
             'ALTER TABLE `MyTable` CHANGE `ColumnOne` `ColumnTwo` INTEGER NULL'
         )
@@ -26,33 +29,38 @@ class MySQLOpTest(TestCase):
     def test_rename_column_quotes_needed_two(self):
         context = op_fixture('mysql')
         op.alter_column('my table', 'column one', new_column_name="column two",
-                                existing_type=Integer)
+                        existing_type=Integer)
         context.assert_(
-            'ALTER TABLE `my table` CHANGE `column one` `column two` INTEGER NULL'
+            'ALTER TABLE `my table` CHANGE `column one` '
+            '`column two` INTEGER NULL'
         )
 
     def test_rename_column_serv_default(self):
         context = op_fixture('mysql')
-        op.alter_column('t1', 'c1', new_column_name="c2", existing_type=Integer,
-                            existing_server_default="q")
+        op.alter_column(
+            't1', 'c1', new_column_name="c2", existing_type=Integer,
+            existing_server_default="q")
         context.assert_(
             "ALTER TABLE t1 CHANGE c1 c2 INTEGER NULL DEFAULT 'q'"
         )
 
     def test_rename_column_serv_compiled_default(self):
         context = op_fixture('mysql')
-        op.alter_column('t1', 'c1', existing_type=Integer,
-                server_default=func.utc_thing(func.current_timestamp()))
+        op.alter_column(
+            't1', 'c1', existing_type=Integer,
+            server_default=func.utc_thing(func.current_timestamp()))
         # this is not a valid MySQL default but the point is to just
         # test SQL expression rendering
         context.assert_(
-            "ALTER TABLE t1 ALTER COLUMN c1 SET DEFAULT utc_thing(CURRENT_TIMESTAMP)"
+            "ALTER TABLE t1 ALTER COLUMN c1 "
+            "SET DEFAULT utc_thing(CURRENT_TIMESTAMP)"
         )
 
     def test_rename_column_autoincrement(self):
         context = op_fixture('mysql')
-        op.alter_column('t1', 'c1', new_column_name="c2", existing_type=Integer,
-                                    existing_autoincrement=True)
+        op.alter_column(
+            't1', 'c1', new_column_name="c2", existing_type=Integer,
+            existing_autoincrement=True)
         context.assert_(
             'ALTER TABLE t1 CHANGE c1 c2 INTEGER NULL AUTO_INCREMENT'
         )
@@ -60,7 +68,7 @@ class MySQLOpTest(TestCase):
     def test_col_add_autoincrement(self):
         context = op_fixture('mysql')
         op.alter_column('t1', 'c1', existing_type=Integer,
-                                    autoincrement=True)
+                        autoincrement=True)
         context.assert_(
             'ALTER TABLE t1 MODIFY c1 INTEGER NULL AUTO_INCREMENT'
         )
@@ -68,18 +76,17 @@ class MySQLOpTest(TestCase):
     def test_col_remove_autoincrement(self):
         context = op_fixture('mysql')
         op.alter_column('t1', 'c1', existing_type=Integer,
-                                    existing_autoincrement=True,
-                                    autoincrement=False)
+                        existing_autoincrement=True,
+                        autoincrement=False)
         context.assert_(
             'ALTER TABLE t1 MODIFY c1 INTEGER NULL'
         )
 
-
     def test_col_dont_remove_server_default(self):
         context = op_fixture('mysql')
         op.alter_column('t1', 'c1', existing_type=Integer,
-                                    existing_server_default='1',
-                                    server_default=False)
+                        existing_server_default='1',
+                        server_default=False)
 
         context.assert_()
 
@@ -89,8 +96,6 @@ class MySQLOpTest(TestCase):
         context.assert_(
             'ALTER TABLE t ALTER COLUMN c DROP DEFAULT'
         )
-
-
 
     def test_alter_column_modify_default(self):
         context = op_fixture('mysql')
@@ -110,7 +115,7 @@ class MySQLOpTest(TestCase):
     def test_col_not_nullable_existing_serv_default(self):
         context = op_fixture('mysql')
         op.alter_column('t1', 'c1', nullable=False, existing_type=Integer,
-                                    existing_server_default='5')
+                        existing_server_default='5')
         context.assert_(
             "ALTER TABLE t1 MODIFY c1 INTEGER NOT NULL DEFAULT '5'"
         )
@@ -124,14 +129,16 @@ class MySQLOpTest(TestCase):
 
     def test_col_multi_alter(self):
         context = op_fixture('mysql')
-        op.alter_column('t1', 'c1', nullable=False, server_default="q", type_=Integer)
+        op.alter_column(
+            't1', 'c1', nullable=False, server_default="q", type_=Integer)
         context.assert_(
             "ALTER TABLE t1 MODIFY c1 INTEGER NOT NULL DEFAULT 'q'"
         )
 
     def test_alter_column_multi_alter_w_drop_default(self):
         context = op_fixture('mysql')
-        op.alter_column('t1', 'c1', nullable=False, server_default=None, type_=Integer)
+        op.alter_column(
+            't1', 'c1', nullable=False, server_default=None, type_=Integer)
         context.assert_(
             "ALTER TABLE t1 MODIFY c1 INTEGER NOT NULL"
         )
@@ -191,7 +198,9 @@ class MySQLOpTest(TestCase):
             op.drop_constraint, "f1", "t1"
         )
 
+
 class MySQLDefaultCompareTest(TestCase):
+
     @classmethod
     def setup_class(cls):
         cls.bind = db_for_dialect("mysql")
@@ -209,7 +218,7 @@ class MySQLDefaultCompareTest(TestCase):
             'connection': connection,
             'dialect': connection.dialect,
             'context': context
-            }
+        }
 
     @classmethod
     def teardown_class(cls):
@@ -227,12 +236,16 @@ class MySQLDefaultCompareTest(TestCase):
         else:
             alternate = txt
             expected = False
-        t = Table("test", self.metadata,
-            Column("somecol", type_, server_default=text(txt) if txt else None)
+        t = Table(
+            "test", self.metadata,
+            Column(
+                "somecol", type_,
+                server_default=text(txt) if txt else None
+            )
         )
         t2 = Table("test", MetaData(),
-            Column("somecol", type_, server_default=text(alternate))
-        )
+                   Column("somecol", type_, server_default=text(alternate))
+                   )
         assert self._compare_default(
             t, t2, t2.c.somecol, alternate
         ) is expected
@@ -263,4 +276,3 @@ class MySQLDefaultCompareTest(TestCase):
             TIMESTAMP(),
             None, "CURRENT_TIMESTAMP",
         )
-

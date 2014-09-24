@@ -3,6 +3,106 @@
 Changelog
 ==========
 .. changelog::
+    :version: 0.6.7
+    :released: September 9, 2014
+
+    .. change::
+      :tags: bug, mssql
+      :pullreq: bitbucket:26
+
+      Fixed bug in MSSQL dialect where "rename table" wasn't using
+      ``sp_rename()`` as is required on SQL Server.  Pull request courtesy
+      Łukasz Bołdys.
+
+    .. change::
+      :tags: feature
+      :tickets: 222
+
+      Added support for functional indexes when using the
+      :meth:`.Operations.create_index` directive.   Within the list of columns,
+      the SQLAlchemy ``text()`` construct can be sent, embedding a literal
+      SQL expression; the :meth:`.Operations.create_index` will perform some hackery
+      behind the scenes to get the :class:`.Index` construct to cooperate.
+      This works around some current limitations in :class:`.Index`
+      which should be resolved on the SQLAlchemy side at some point.
+
+.. changelog::
+    :version: 0.6.6
+    :released: August 7, 2014
+
+    .. change::
+      :tags: bug
+      :tickets: 95
+      :pullreq: bitbucket:24
+
+      A file named ``__init__.py`` in the ``versions/`` directory is now
+      ignored by Alembic when the collection of version files is retrieved.
+      Pull request courtesy Michael Floering.
+
+    .. change::
+      :tags: bug
+      :pullreq: bitbucket:23
+
+      Fixed Py3K bug where an attempt would be made to sort None against
+      string values when autogenerate would detect tables across multiple
+      schemas, including the default schema.  Pull request courtesy
+      paradoxxxzero.
+
+    .. change::
+      :tags: bug
+      :pullreq: github:15
+
+      Autogenerate render will render the arguments within a Table construct
+      using ``*[...]`` when the number of columns/elements is greater than
+      255.  Pull request courtesy Ryan P. Kelly.
+
+    .. change::
+      :tags: bug
+      :pullreq: github:14
+
+      Fixed bug where foreign key constraints would fail to render in
+      autogenerate when a schema name was present.  Pull request courtesy
+      Andreas Zeidler.
+
+    .. change::
+      :tags: bug
+      :tickets: 212
+
+      Some deep-in-the-weeds fixes to try to get "server default" comparison
+      working better across platforms and expressions, in particular on
+      the Postgresql backend, mostly dealing with quoting/not quoting of various
+      expressions at the appropriate time and on a per-backend basis.
+      Repaired and tested support for such defaults as Postgresql interval
+      and array defaults.
+
+    .. change::
+      :tags: enhancement
+      :tickets: 209
+
+      When a run of Alembic command line fails due to ``CommandError``,
+      the output now prefixes the string with ``"FAILED:"``, and the error
+      is also written to the log output using ``log.error()``.
+
+    .. change::
+      :tags: bug
+      :tickets: 208
+
+      Liberalized even more the check for MySQL indexes that shouldn't be
+      counted in autogenerate as "drops"; this time it's been reported
+      that an implicitly created index might be named the same as a composite
+      foreign key constraint, and not the actual columns, so we now skip those
+      when detected as well.
+
+    .. change::
+      :tags: feature
+      :pullreq: github:10
+
+      Added a new accessor :attr:`.MigrationContext.config`, when used
+      in conjunction with a :class:`.EnvironmentContext` and
+      :class:`.Config`, this config will be returned.  Patch
+      courtesy Marc Abramowitz.
+
+.. changelog::
     :version: 0.6.5
     :released: May 3, 2014
 

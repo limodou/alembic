@@ -2,7 +2,9 @@ from .operations import Operations
 from .migration import MigrationContext
 from . import util
 
+
 class EnvironmentContext(object):
+
     """Represent the state made available to an ``env.py`` script.
 
     :class:`.EnvironmentContext` is normally instantiated
@@ -156,13 +158,13 @@ class EnvironmentContext(object):
         """
         if self._migration_context is not None:
             return self.script._as_rev_number(
-                        self.get_context()._start_from_rev)
+                self.get_context()._start_from_rev)
         elif 'starting_rev' in self.context_opts:
             return self.script._as_rev_number(
-                        self.context_opts['starting_rev'])
+                self.context_opts['starting_rev'])
         else:
             raise util.CommandError(
-                        "No starting revision argument is available.")
+                "No starting revision argument is available.")
 
     def get_revision_argument(self):
         """Get the 'destination' revision argument.
@@ -179,7 +181,7 @@ class EnvironmentContext(object):
 
         """
         return self.script._as_rev_number(
-                            self.context_opts['destination_rev'])
+            self.context_opts['destination_rev'])
 
     def get_tag_argument(self):
         """Return the value passed for the ``--tag`` argument, if any.
@@ -216,7 +218,8 @@ class EnvironmentContext(object):
         For example, to support passing a database URL on the command line,
         the standard ``env.py`` script can be modified like this::
 
-            cmd_line_url = context.get_x_argument(as_dictionary=True).get('dbname')
+            cmd_line_url = context.get_x_argument(
+                as_dictionary=True).get('dbname')
             if cmd_line_url:
                 engine = create_engine(cmd_line_url)
             else:
@@ -247,34 +250,34 @@ class EnvironmentContext(object):
             value = []
         if as_dictionary:
             value = dict(
-                        arg.split('=', 1) for arg in value
-                    )
+                arg.split('=', 1) for arg in value
+            )
         return value
 
     def configure(self,
-            connection=None,
-            url=None,
-            dialect_name=None,
-            transactional_ddl=None,
-            transaction_per_migration=False,
-            output_buffer=None,
-            starting_rev=None,
-            tag=None,
-            template_args=None,
-            target_metadata=None,
-            include_symbol=None,
-            include_object=None,
-            include_schemas=False,
-            compare_type=False,
-            compare_server_default=False,
-            render_item=None,
-            upgrade_token="upgrades",
-            downgrade_token="downgrades",
-            alembic_module_prefix="op.",
-            sqlalchemy_module_prefix="sa.",
-            user_module_prefix=None,
-            **kw
-        ):
+                  connection=None,
+                  url=None,
+                  dialect_name=None,
+                  transactional_ddl=None,
+                  transaction_per_migration=False,
+                  output_buffer=None,
+                  starting_rev=None,
+                  tag=None,
+                  template_args=None,
+                  target_metadata=None,
+                  include_symbol=None,
+                  include_object=None,
+                  include_schemas=False,
+                  compare_type=False,
+                  compare_server_default=False,
+                  render_item=None,
+                  upgrade_token="upgrades",
+                  downgrade_token="downgrades",
+                  alembic_module_prefix="op.",
+                  sqlalchemy_module_prefix="sa.",
+                  user_module_prefix=None,
+                  **kw
+                  ):
         """Configure a :class:`.MigrationContext` within this
         :class:`.EnvironmentContext` which will provide database
         connectivity and other configuration to a series of
@@ -396,10 +399,12 @@ class EnvironmentContext(object):
             )
 
 
-         ``inspected_column`` is a :class:`sqlalchemy.schema.Column` as returned by
-         :meth:`sqlalchemy.engine.reflection.Inspector.reflecttable`, whereas
-         ``metadata_column`` is a :class:`sqlalchemy.schema.Column` from
-         the local model environment.
+         ``inspected_column`` is a :class:`sqlalchemy.schema.Column` as
+         returned by
+         :meth:`sqlalchemy.engine.reflection.Inspector.reflecttable`,
+         whereas ``metadata_column`` is a
+         :class:`sqlalchemy.schema.Column` from the local model
+         environment.
 
          A return value of ``None`` indicates to allow default type
          comparison to proceed.
@@ -458,9 +463,9 @@ class EnvironmentContext(object):
 
          The function accepts the following positional arguments:
 
-         * ``object``: a :class:`~sqlalchemy.schema.SchemaItem` object such as a
-           :class:`~sqlalchemy.schema.Table` or :class:`~sqlalchemy.schema.Column`
-           object
+         * ``object``: a :class:`~sqlalchemy.schema.SchemaItem` object such
+           as a :class:`~sqlalchemy.schema.Table` or
+           :class:`~sqlalchemy.schema.Column` object
          * ``name``: the name of the object. This is typically available
            via ``object.name``.
          * ``type``: a string describing the type of object; currently
@@ -500,10 +505,12 @@ class EnvironmentContext(object):
             :paramref:`.EnvironmentContext.configure.include_schemas`
 
         :param include_symbol: A callable function which, given a table name
-         and schema name (may be ``None``), returns ``True`` or ``False``, indicating
-         if the given table should be considered in the autogenerate sweep.
+         and schema name (may be ``None``), returns ``True`` or ``False``,
+         indicating if the given table should be considered in the
+         autogenerate sweep.
 
-         .. deprecated:: 0.6.0 :paramref:`.EnvironmentContext.configure.include_symbol`
+         .. deprecated:: 0.6.0
+            :paramref:`.EnvironmentContext.configure.include_symbol`
             is superceded by the more generic
             :paramref:`.EnvironmentContext.configure.include_object`
             parameter.
@@ -661,6 +668,7 @@ class EnvironmentContext(object):
             connection=connection,
             url=url,
             dialect_name=dialect_name,
+            environment_context=self,
             opts=opts
         )
 
@@ -700,7 +708,7 @@ class EnvironmentContext(object):
 
         """
         self.get_context().execute(sql,
-                execution_options=execution_options)
+                                   execution_options=execution_options)
 
     def static_output(self, text):
         """Emit text directly to the "offline" SQL stream.
@@ -712,7 +720,6 @@ class EnvironmentContext(object):
 
         """
         self.get_context().impl.static_output(text)
-
 
     def begin_transaction(self):
         """Return a context manager that will
@@ -760,7 +767,6 @@ class EnvironmentContext(object):
 
         return self.get_context().begin_transaction()
 
-
     def get_context(self):
         """Return the current :class:`.MigrationContext` object.
 
@@ -788,4 +794,3 @@ class EnvironmentContext(object):
 
     def get_impl(self):
         return self.get_context().impl
-

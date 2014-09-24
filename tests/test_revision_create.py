@@ -1,7 +1,9 @@
-from tests import clear_staging_env, staging_env, eq_, ne_, is_, staging_directory
-from tests import _no_sql_testing_config, env_file_fixture, script_file_fixture, _testing_config
+from tests import clear_staging_env, staging_env, eq_, ne_, is_, \
+    staging_directory
+from tests import _no_sql_testing_config, env_file_fixture, \
+    script_file_fixture, _testing_config
 from alembic import command
-from alembic.script import ScriptDirectory
+from alembic.script import ScriptDirectory, Script
 from alembic.environment import EnvironmentContext
 from alembic import util
 import os
@@ -10,7 +12,9 @@ import datetime
 
 env, abc, def_ = None, None, None
 
+
 class GeneralOrderedTests(unittest.TestCase):
+
     def test_001_environment(self):
         assert_set = set(['env.py', 'script.py.mako', 'README'])
         eq_(
@@ -35,15 +39,19 @@ class GeneralOrderedTests(unittest.TestCase):
         eq_(script.revision, abc)
         eq_(script.down_revision, None)
         assert os.access(
-            os.path.join(env.dir, 'versions', '%s_this_is_a_message.py' % abc), os.F_OK)
+            os.path.join(env.dir, 'versions',
+                         '%s_this_is_a_message.py' % abc), os.F_OK)
         assert callable(script.module.upgrade)
         eq_(env.get_heads(), [abc])
         eq_(env.get_base(), abc)
 
     def test_005_nextrev(self):
-        script = env.generate_revision(def_, "this is the next rev", refresh=True)
+        script = env.generate_revision(
+            def_, "this is the next rev", refresh=True)
         assert os.access(
-            os.path.join(env.dir, 'versions', '%s_this_is_the_next_rev.py' % def_), os.F_OK)
+            os.path.join(
+                env.dir, 'versions',
+                '%s_this_is_the_next_rev.py' % def_), os.F_OK)
         eq_(script.revision, def_)
         eq_(script.down_revision, abc)
         eq_(env._revision_map[abc].nextrev, set([def_]))
@@ -76,28 +84,27 @@ class GeneralOrderedTests(unittest.TestCase):
     def test_008_long_name(self):
         rid = util.rev_id()
         env.generate_revision(rid,
-                "this is a really long name with "
-                "lots of characters and also "
-                "I'd like it to\nhave\nnewlines")
+                              "this is a really long name with "
+                              "lots of characters and also "
+                              "I'd like it to\nhave\nnewlines")
         assert os.access(
-            os.path.join(env.dir, 'versions',
-                    '%s_this_is_a_really_long_name_with_lots_of_.py' % rid),
-                os.F_OK)
-
+            os.path.join(
+                env.dir, 'versions',
+                '%s_this_is_a_really_long_name_with_lots_of_.py' % rid),
+            os.F_OK)
 
     def test_009_long_name_configurable(self):
         env.truncate_slug_length = 60
         rid = util.rev_id()
         env.generate_revision(rid,
-                "this is a really long name with "
-                "lots of characters and also "
-                "I'd like it to\nhave\nnewlines")
+                              "this is a really long name with "
+                              "lots of characters and also "
+                              "I'd like it to\nhave\nnewlines")
         assert os.access(
             os.path.join(env.dir, 'versions',
-                    '%s_this_is_a_really_long_name_with_lots_'
-                    'of_characters_and_also_.py' % rid),
-                os.F_OK)
-
+                         '%s_this_is_a_really_long_name_with_lots_'
+                         'of_characters_and_also_.py' % rid),
+            os.F_OK)
 
     @classmethod
     def setup_class(cls):
@@ -108,7 +115,9 @@ class GeneralOrderedTests(unittest.TestCase):
     def teardown_class(cls):
         clear_staging_env()
 
+
 class ScriptNamingTest(unittest.TestCase):
+
     @classmethod
     def setup_class(cls):
         _testing_config()
@@ -119,12 +128,12 @@ class ScriptNamingTest(unittest.TestCase):
 
     def test_args(self):
         script = ScriptDirectory(
-                        staging_directory,
-                        file_template="%(rev)s_%(slug)s_"
-                            "%(year)s_%(month)s_"
-                            "%(day)s_%(hour)s_"
-                            "%(minute)s_%(second)s"
-                    )
+            staging_directory,
+            file_template="%(rev)s_%(slug)s_"
+            "%(year)s_%(month)s_"
+            "%(day)s_%(hour)s_"
+            "%(minute)s_%(second)s"
+        )
         create_date = datetime.datetime(2012, 7, 25, 15, 8, 5)
         eq_(
             script._rev_path("12345", "this is a message", create_date),
@@ -134,6 +143,7 @@ class ScriptNamingTest(unittest.TestCase):
 
 
 class TemplateArgsTest(unittest.TestCase):
+
     def setUp(self):
         staging_env()
         self.cfg = _no_sql_testing_config(
@@ -153,11 +163,41 @@ class TemplateArgsTest(unittest.TestCase):
             template_args=template_args
         )
         env.configure(dialect_name="sqlite",
-                        template_args={"y": "y2", "q": "q1"})
+                      template_args={"y": "y2", "q": "q1"})
         eq_(
             template_args,
             {"x": "x1", "y": "y2", "z": "z1", "q": "q1"}
         )
+
+    def test_step_ignore_init_py(self):
+        """test that __init__.py is ignored."""
+
+        env_file_fixture("""
+context.configure(dialect_name='sqlite', template_args={"somearg":"somevalue"})
+""")
+        command.revision(self.cfg, message="some rev")
+        script = ScriptDirectory.from_config(self.cfg)
+        path = os.path.join(script.versions, "__init__.py")
+        with open(path, 'w') as f:
+            f.write(
+                "crap, crap -> crap"
+            )
+        command.revision(self.cfg, message="another rev")
+
+        script.get_revision('head')
+
+    def test_is_ignored_filename(self):
+        script = ScriptDirectory.from_config(self.cfg)
+        cases = [
+            '__init__.py',
+            u'__init__.py',
+            u'__init__.pyc',
+            u'__init__.pyx',
+            u'__init__.pyo',
+        ]
+        for case in cases:
+            assert Script._from_filename(
+                script, script.versions, case) is None
 
     def test_tmpl_args_revision(self):
         env_file_fixture("""
@@ -168,10 +208,11 @@ context.configure(dialect_name='sqlite', template_args={"somearg":"somevalue"})
 revision = ${repr(up_revision)}
 down_revision = ${repr(down_revision)}
 """)
+
         command.revision(self.cfg, message="some rev")
         script = ScriptDirectory.from_config(self.cfg)
+
         rev = script.get_revision('head')
         with open(rev.path) as f:
             text = f.read()
         assert "somearg: somevalue" in text
-

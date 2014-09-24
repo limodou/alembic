@@ -6,7 +6,7 @@
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     
-    <title>API Details &mdash; Alembic 0.6.5 documentation</title>
+    <title>API Details &mdash; Alembic 0.6.7 documentation</title>
     
     <link rel="stylesheet" href="_static/nature_override.css" type="text/css" />
     <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
@@ -16,7 +16,7 @@
     <script type="text/javascript">
       var DOCUMENTATION_OPTIONS = {
         URL_ROOT:    './',
-        VERSION:     '0.6.5',
+        VERSION:     '0.6.7',
         COLLAPSE_INDEX: false,
         FILE_SUFFIX: '.html',
         HAS_SOURCE:  true
@@ -25,7 +25,7 @@
     <script type="text/javascript" src="_static/jquery.js"></script>
     <script type="text/javascript" src="_static/underscore.js"></script>
     <script type="text/javascript" src="_static/doctools.js"></script>
-    <link rel="top" title="Alembic 0.6.5 documentation" href="index.html" />
+    <link rel="top" title="Alembic 0.6.7 documentation" href="index.html" />
     <link rel="next" title="Changelog" href="changelog.html" />
     <link rel="prev" title="Cookbook" href="cookbook.html" /> 
   </head>
@@ -45,7 +45,7 @@
         <li class="right" >
           <a href="cookbook.html" title="Cookbook"
              accesskey="P">previous</a> |</li>
-        <li><a href="index.html">Alembic 0.6.5 documentation</a> &raquo;</li> 
+        <li><a href="index.html">Alembic 0.6.7 documentation</a> &raquo;</li> 
       </ul>
     </div>  
 
@@ -352,10 +352,12 @@ The format of this callable is:</p>
 <span class="p">)</span>
 </pre></div>
 </div>
-<p><tt class="docutils literal"><span class="pre">inspected_column</span></tt> is a <a class="reference external" href="http://www.sqlalchemy.org/docs/core/metadata.html#sqlalchemy.schema.Column" title="(in SQLAlchemy v0.9)"><tt class="xref py py-class docutils literal"><span class="pre">sqlalchemy.schema.Column</span></tt></a> as returned by
-<a class="reference external" href="http://www.sqlalchemy.org/docs/core/reflection.html#sqlalchemy.engine.reflection.Inspector.reflecttable" title="(in SQLAlchemy v0.9)"><tt class="xref py py-meth docutils literal"><span class="pre">sqlalchemy.engine.reflection.Inspector.reflecttable()</span></tt></a>, whereas
-<tt class="docutils literal"><span class="pre">metadata_column</span></tt> is a <a class="reference external" href="http://www.sqlalchemy.org/docs/core/metadata.html#sqlalchemy.schema.Column" title="(in SQLAlchemy v0.9)"><tt class="xref py py-class docutils literal"><span class="pre">sqlalchemy.schema.Column</span></tt></a> from
-the local model environment.</p>
+<p><tt class="docutils literal"><span class="pre">inspected_column</span></tt> is a <a class="reference external" href="http://www.sqlalchemy.org/docs/core/metadata.html#sqlalchemy.schema.Column" title="(in SQLAlchemy v0.9)"><tt class="xref py py-class docutils literal"><span class="pre">sqlalchemy.schema.Column</span></tt></a> as
+returned by
+<a class="reference external" href="http://www.sqlalchemy.org/docs/core/reflection.html#sqlalchemy.engine.reflection.Inspector.reflecttable" title="(in SQLAlchemy v0.9)"><tt class="xref py py-meth docutils literal"><span class="pre">sqlalchemy.engine.reflection.Inspector.reflecttable()</span></tt></a>,
+whereas <tt class="docutils literal"><span class="pre">metadata_column</span></tt> is a
+<a class="reference external" href="http://www.sqlalchemy.org/docs/core/metadata.html#sqlalchemy.schema.Column" title="(in SQLAlchemy v0.9)"><tt class="xref py py-class docutils literal"><span class="pre">sqlalchemy.schema.Column</span></tt></a> from the local model
+environment.</p>
 <p>A return value of <tt class="docutils literal"><span class="pre">None</span></tt> indicates to allow default type
 comparison to proceed.</p>
 <div class="admonition seealso">
@@ -410,9 +412,9 @@ indicating if the given object should be considered in the
 autogenerate sweep.</p>
 <p>The function accepts the following positional arguments:</p>
 <ul>
-<li><tt class="docutils literal"><span class="pre">object</span></tt>: a <a class="reference external" href="http://www.sqlalchemy.org/docs/core/metadata.html#sqlalchemy.schema.SchemaItem" title="(in SQLAlchemy v0.9)"><tt class="xref py py-class docutils literal"><span class="pre">SchemaItem</span></tt></a> object such as a
-<a class="reference external" href="http://www.sqlalchemy.org/docs/core/metadata.html#sqlalchemy.schema.Table" title="(in SQLAlchemy v0.9)"><tt class="xref py py-class docutils literal"><span class="pre">Table</span></tt></a> or <a class="reference external" href="http://www.sqlalchemy.org/docs/core/metadata.html#sqlalchemy.schema.Column" title="(in SQLAlchemy v0.9)"><tt class="xref py py-class docutils literal"><span class="pre">Column</span></tt></a>
-object</li>
+<li><tt class="docutils literal"><span class="pre">object</span></tt>: a <a class="reference external" href="http://www.sqlalchemy.org/docs/core/metadata.html#sqlalchemy.schema.SchemaItem" title="(in SQLAlchemy v0.9)"><tt class="xref py py-class docutils literal"><span class="pre">SchemaItem</span></tt></a> object such
+as a <a class="reference external" href="http://www.sqlalchemy.org/docs/core/metadata.html#sqlalchemy.schema.Table" title="(in SQLAlchemy v0.9)"><tt class="xref py py-class docutils literal"><span class="pre">Table</span></tt></a> or
+<a class="reference external" href="http://www.sqlalchemy.org/docs/core/metadata.html#sqlalchemy.schema.Column" title="(in SQLAlchemy v0.9)"><tt class="xref py py-class docutils literal"><span class="pre">Column</span></tt></a> object</li>
 <li><tt class="docutils literal"><span class="pre">name</span></tt>: the name of the object. This is typically available
 via <tt class="docutils literal"><span class="pre">object.name</span></tt>.</li>
 <li><tt class="docutils literal"><span class="pre">type</span></tt>: a string describing the type of object; currently
@@ -453,8 +455,9 @@ schema from which the <tt class="xref py py-class docutils literal"><span class=
 </div>
 </li>
 <li><span class="target" id="alembic.environment.EnvironmentContext.configure.params.include_symbol"></span><strong>include_symbol</strong><a class="paramlink headerlink reference internal" href="#alembic.environment.EnvironmentContext.configure.params.include_symbol">¶</a> &#8211; <p>A callable function which, given a table name
-and schema name (may be <tt class="docutils literal"><span class="pre">None</span></tt>), returns <tt class="docutils literal"><span class="pre">True</span></tt> or <tt class="docutils literal"><span class="pre">False</span></tt>, indicating
-if the given table should be considered in the autogenerate sweep.</p>
+and schema name (may be <tt class="docutils literal"><span class="pre">None</span></tt>), returns <tt class="docutils literal"><span class="pre">True</span></tt> or <tt class="docutils literal"><span class="pre">False</span></tt>,
+indicating if the given table should be considered in the
+autogenerate sweep.</p>
 <div class="deprecated">
 <p><span>Deprecated since version 0.6.0: </span><a class="reference internal" href="#alembic.environment.EnvironmentContext.configure.params.include_symbol" title="alembic.environment.EnvironmentContext.configure"><tt class="xref py py-paramref docutils literal"><span class="pre">EnvironmentContext.configure.include_symbol</span></tt></a>
 is superceded by the more generic
@@ -686,7 +689,8 @@ are parsed using <tt class="docutils literal"><span class="pre">key=value</span>
 then returned.</p>
 <p>For example, to support passing a database URL on the command line,
 the standard <tt class="docutils literal"><span class="pre">env.py</span></tt> script can be modified like this:</p>
-<div class="highlight-python"><div class="highlight"><pre><span class="n">cmd_line_url</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_x_argument</span><span class="p">(</span><span class="n">as_dictionary</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;dbname&#39;</span><span class="p">)</span>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">cmd_line_url</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_x_argument</span><span class="p">(</span>
+    <span class="n">as_dictionary</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;dbname&#39;</span><span class="p">)</span>
 <span class="k">if</span> <span class="n">cmd_line_url</span><span class="p">:</span>
     <span class="n">engine</span> <span class="o">=</span> <span class="n">create_engine</span><span class="p">(</span><span class="n">cmd_line_url</span><span class="p">)</span>
 <span class="k">else</span><span class="p">:</span>
@@ -779,7 +783,7 @@ is added, etc.</p>
 <span id="the-migration-context"></span><h2>The Migration Context<a class="headerlink" href="#module-alembic.migration" title="Permalink to this headline">¶</a></h2>
 <dl class="class">
 <dt id="alembic.migration.MigrationContext">
-<em class="property">class </em><tt class="descclassname">alembic.migration.</tt><tt class="descname">MigrationContext</tt><big>(</big><em>dialect</em>, <em>connection</em>, <em>opts</em><big>)</big><a class="headerlink" href="#alembic.migration.MigrationContext" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><tt class="descclassname">alembic.migration.</tt><tt class="descname">MigrationContext</tt><big>(</big><em>dialect</em>, <em>connection</em>, <em>opts</em>, <em>environment_context=None</em><big>)</big><a class="headerlink" href="#alembic.migration.MigrationContext" title="Permalink to this definition">¶</a></dt>
 <dd><p>Represent the database state made available to a migration
 script.</p>
 <p><a class="reference internal" href="#alembic.migration.MigrationContext" title="alembic.migration.MigrationContext"><tt class="xref py py-class docutils literal"><span class="pre">MigrationContext</span></tt></a> is the front end to an actual
@@ -831,16 +835,26 @@ for ad-hoc execution of any kind of usage described
 in <a class="reference external" href="http://www.sqlalchemy.org/docs/core/tutorial.html#sqlexpression-toplevel" title="(in SQLAlchemy v0.9)"><em>SQL Expression Language Tutorial</em></a> as well as
 for usage with the <a class="reference external" href="http://www.sqlalchemy.org/docs/core/metadata.html#sqlalchemy.schema.Table.create" title="(in SQLAlchemy v0.9)"><tt class="xref py py-meth docutils literal"><span class="pre">sqlalchemy.schema.Table.create()</span></tt></a>
 and <a class="reference external" href="http://www.sqlalchemy.org/docs/core/metadata.html#sqlalchemy.schema.MetaData.create_all" title="(in SQLAlchemy v0.9)"><tt class="xref py py-meth docutils literal"><span class="pre">sqlalchemy.schema.MetaData.create_all()</span></tt></a> methods
-of <a class="reference external" href="http://www.sqlalchemy.org/docs/core/metadata.html#sqlalchemy.schema.Table" title="(in SQLAlchemy v0.9)"><tt class="xref py py-class docutils literal"><span class="pre">Table</span></tt></a>, <a class="reference external" href="http://www.sqlalchemy.org/docs/core/metadata.html#sqlalchemy.schema.MetaData" title="(in SQLAlchemy v0.9)"><tt class="xref py py-class docutils literal"><span class="pre">MetaData</span></tt></a>.</p>
+of <a class="reference external" href="http://www.sqlalchemy.org/docs/core/metadata.html#sqlalchemy.schema.Table" title="(in SQLAlchemy v0.9)"><tt class="xref py py-class docutils literal"><span class="pre">Table</span></tt></a>,
+<a class="reference external" href="http://www.sqlalchemy.org/docs/core/metadata.html#sqlalchemy.schema.MetaData" title="(in SQLAlchemy v0.9)"><tt class="xref py py-class docutils literal"><span class="pre">MetaData</span></tt></a>.</p>
 <p>Note that when &#8220;standard output&#8221; mode is enabled,
 this bind will be a &#8220;mock&#8221; connection handler that cannot
 return results and is only appropriate for a very limited
 subset of commands.</p>
 </dd></dl>
 
+<dl class="attribute">
+<dt id="alembic.migration.MigrationContext.config">
+<tt class="descname">config</tt><a class="headerlink" href="#alembic.migration.MigrationContext.config" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the <a class="reference internal" href="#alembic.config.Config" title="alembic.config.Config"><tt class="xref py py-class docutils literal"><span class="pre">Config</span></tt></a> used by the current environment, if any.</p>
+<div class="versionadded">
+<p><span>New in version 0.6.6.</span></p>
+</div>
+</dd></dl>
+
 <dl class="classmethod">
 <dt id="alembic.migration.MigrationContext.configure">
-<em class="property">classmethod </em><tt class="descname">configure</tt><big>(</big><em>connection=None</em>, <em>url=None</em>, <em>dialect_name=None</em>, <em>opts={}</em><big>)</big><a class="headerlink" href="#alembic.migration.MigrationContext.configure" title="Permalink to this definition">¶</a></dt>
+<em class="property">classmethod </em><tt class="descname">configure</tt><big>(</big><em>connection=None</em>, <em>url=None</em>, <em>dialect_name=None</em>, <em>environment_context=None</em>, <em>opts=None</em><big>)</big><a class="headerlink" href="#alembic.migration.MigrationContext.configure" title="Permalink to this definition">¶</a></dt>
 <dd><p>Create a new <a class="reference internal" href="#alembic.migration.MigrationContext" title="alembic.migration.MigrationContext"><tt class="xref py py-class docutils literal"><span class="pre">MigrationContext</span></tt></a>.</p>
 <p>This is a factory method usually called
 by <a class="reference internal" href="#alembic.environment.EnvironmentContext.configure" title="alembic.environment.EnvironmentContext.configure"><tt class="xref py py-meth docutils literal"><span class="pre">EnvironmentContext.configure()</span></tt></a>.</p>
@@ -892,8 +906,8 @@ parameter is returned instead, if any.</p>
 <dl class="method">
 <dt id="alembic.migration.MigrationContext.run_migrations">
 <tt class="descname">run_migrations</tt><big>(</big><em>**kw</em><big>)</big><a class="headerlink" href="#alembic.migration.MigrationContext.run_migrations" title="Permalink to this definition">¶</a></dt>
-<dd><p>Run the migration scripts established for this <a class="reference internal" href="#alembic.migration.MigrationContext" title="alembic.migration.MigrationContext"><tt class="xref py py-class docutils literal"><span class="pre">MigrationContext</span></tt></a>,
-if any.</p>
+<dd><p>Run the migration scripts established for this
+<a class="reference internal" href="#alembic.migration.MigrationContext" title="alembic.migration.MigrationContext"><tt class="xref py py-class docutils literal"><span class="pre">MigrationContext</span></tt></a>, if any.</p>
 <p>The commands in <a class="reference internal" href="#module-alembic.command" title="alembic.command"><tt class="xref py py-mod docutils literal"><span class="pre">alembic.command</span></tt></a> will set up a function
 that is ultimately passed to the <a class="reference internal" href="#alembic.migration.MigrationContext" title="alembic.migration.MigrationContext"><tt class="xref py py-class docutils literal"><span class="pre">MigrationContext</span></tt></a>
 as the <tt class="docutils literal"><span class="pre">fn</span></tt> argument.  This function represents the &#8220;work&#8221;
@@ -1778,10 +1792,10 @@ an inline string, use a backslash to escape:</p>
 <p>The <tt class="xref py py-class docutils literal"><span class="pre">TextClause</span></tt> construct includes methods which can
 provide information about the bound parameters as well as the column
 values which would be returned from the textual statement, assuming
-it&#8217;s an executable SELECT type of statement.  The <tt class="xref py py-meth docutils literal"><span class="pre">TextClause.bindparams()</span></tt>
-method is used to provide bound parameter detail, and
-<tt class="xref py py-meth docutils literal"><span class="pre">TextClause.columns()</span></tt> method allows specification of
-return columns including names and types:</p>
+it&#8217;s an executable SELECT type of statement.  The
+<tt class="xref py py-meth docutils literal"><span class="pre">TextClause.bindparams()</span></tt> method is used to provide bound
+parameter detail, and <tt class="xref py py-meth docutils literal"><span class="pre">TextClause.columns()</span></tt> method allows
+specification of return columns including names and types:</p>
 <div class="highlight-python"><div class="highlight"><pre><span class="n">t</span> <span class="o">=</span> <span class="n">text</span><span class="p">(</span><span class="s">&quot;SELECT * FROM users WHERE id=:user_id&quot;</span><span class="p">)</span><span class="o">.</span>\
         <span class="n">bindparams</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span><span class="o">.</span>\
         <span class="n">columns</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="n">Integer</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">String</span><span class="p">)</span>
@@ -1804,8 +1818,8 @@ of a full, standalone statement.   As such, SQLAlchemy refers
 to it as an <tt class="xref py py-class docutils literal"><span class="pre">Executable</span></tt> object, and it supports
 the <tt class="xref py py-meth docutils literal"><span class="pre">Executable.execution_options()</span></tt> method.  For example,
 a <a class="reference internal" href="#alembic.ddl.impl.text" title="alembic.ddl.impl.text"><tt class="xref py py-func docutils literal"><span class="pre">text()</span></tt></a> construct that should be subject to &#8220;autocommit&#8221;
-can be set explicitly so using the <tt class="xref py py-paramref docutils literal"><span class="pre">Connection.execution_options.autocommit</span></tt>
-option:</p>
+can be set explicitly so using the
+<tt class="xref py py-paramref docutils literal"><span class="pre">Connection.execution_options.autocommit</span></tt> option:</p>
 <div class="highlight-python"><div class="highlight"><pre><span class="n">t</span> <span class="o">=</span> <span class="n">text</span><span class="p">(</span><span class="s">&quot;EXEC my_procedural_thing()&quot;</span><span class="p">)</span><span class="o">.</span>\
         <span class="n">execution_options</span><span class="p">(</span><span class="n">autocommit</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
 </pre></div>
@@ -1848,16 +1862,18 @@ supersedes the <tt class="docutils literal"><span class="pre">bindparams</span><
 represented in the columns clause of a <tt class="docutils literal"><span class="pre">SELECT</span></tt> statement
 to type objects,
 which will be used to perform post-processing on columns within
-the result set.  This parameter now invokes the <tt class="xref py py-meth docutils literal"><span class="pre">TextClause.columns()</span></tt>
-method, which returns a <tt class="xref py py-class docutils literal"><span class="pre">TextAsFrom</span></tt> construct that gains
-a <tt class="docutils literal"><span class="pre">.c</span></tt> collection and can be embedded in other expressions.  E.g.:</p>
+the result set.  This parameter now invokes the
+<tt class="xref py py-meth docutils literal"><span class="pre">TextClause.columns()</span></tt> method, which returns a
+<tt class="xref py py-class docutils literal"><span class="pre">TextAsFrom</span></tt> construct that gains a <tt class="docutils literal"><span class="pre">.c</span></tt> collection and
+can be embedded in other expressions.  E.g.:</p>
 <div class="highlight-python"><div class="highlight"><pre><span class="n">stmt</span> <span class="o">=</span> <span class="n">text</span><span class="p">(</span><span class="s">&quot;SELECT * FROM table&quot;</span><span class="p">,</span>
               <span class="n">typemap</span><span class="o">=</span><span class="p">{</span><span class="s">&#39;id&#39;</span><span class="p">:</span> <span class="n">Integer</span><span class="p">,</span> <span class="s">&#39;name&#39;</span><span class="p">:</span> <span class="n">String</span><span class="p">},</span>
           <span class="p">)</span>
 </pre></div>
 </div>
 <p>Is equivalent to:</p>
-<div class="highlight-python"><div class="highlight"><pre><span class="n">stmt</span> <span class="o">=</span> <span class="n">text</span><span class="p">(</span><span class="s">&quot;SELECT * FROM table&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">columns</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="n">Integer</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">String</span><span class="p">)</span>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">stmt</span> <span class="o">=</span> <span class="n">text</span><span class="p">(</span><span class="s">&quot;SELECT * FROM table&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">columns</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="n">Integer</span><span class="p">,</span>
+                                           <span class="n">name</span><span class="o">=</span><span class="n">String</span><span class="p">)</span>
 </pre></div>
 </div>
 <p>Or alternatively:</p>
@@ -1995,6 +2011,11 @@ supersedes the <tt class="docutils literal"><span class="pre">typemap</span></tt
 <tt class="descclassname">alembic.ddl.mssql.</tt><tt class="descname">visit_rename_column</tt><big>(</big><em>element</em>, <em>compiler</em>, <em>**kw</em><big>)</big><a class="headerlink" href="#alembic.ddl.mssql.visit_rename_column" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
+<dl class="function">
+<dt id="alembic.ddl.mssql.visit_rename_table">
+<tt class="descclassname">alembic.ddl.mssql.</tt><tt class="descname">visit_rename_table</tt><big>(</big><em>element</em>, <em>compiler</em>, <em>**kw</em><big>)</big><a class="headerlink" href="#alembic.ddl.mssql.visit_rename_table" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
 </div>
 <div class="section" id="module-alembic.ddl.postgresql">
 <span id="postgresql"></span><h3>Postgresql<a class="headerlink" href="#module-alembic.ddl.postgresql" title="Permalink to this headline">¶</a></h3>
@@ -2029,6 +2050,11 @@ supersedes the <tt class="docutils literal"><span class="pre">typemap</span></tt
 <dl class="method">
 <dt id="alembic.ddl.sqlite.SQLiteImpl.add_constraint">
 <tt class="descname">add_constraint</tt><big>(</big><em>const</em><big>)</big><a class="headerlink" href="#alembic.ddl.sqlite.SQLiteImpl.add_constraint" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="alembic.ddl.sqlite.SQLiteImpl.compare_server_default">
+<tt class="descname">compare_server_default</tt><big>(</big><em>inspector_column</em>, <em>metadata_column</em>, <em>rendered_metadata_default</em>, <em>rendered_inspector_default</em><big>)</big><a class="headerlink" href="#alembic.ddl.sqlite.SQLiteImpl.compare_server_default" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="method">
@@ -2125,7 +2151,7 @@ see: <a class="reference external" href="http://bugs.python.org/issue10740">http
         <li class="right" >
           <a href="cookbook.html" title="Cookbook"
              >previous</a> |</li>
-        <li><a href="index.html">Alembic 0.6.5 documentation</a> &raquo;</li> 
+        <li><a href="index.html">Alembic 0.6.7 documentation</a> &raquo;</li> 
       </ul>
     </div>
     <div class="footer">

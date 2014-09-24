@@ -4,20 +4,22 @@ from .script import ScriptDirectory
 from .environment import EnvironmentContext
 from . import util, autogenerate as autogen
 
+
 def list_templates(config):
     """List available templates"""
 
     config.print_stdout("Available templates:\n")
     for tempname in os.listdir(config.get_template_directory()):
         with open(os.path.join(
-                        config.get_template_directory(),
-                        tempname,
-                        'README')) as readme:
+                config.get_template_directory(),
+                tempname,
+                'README')) as readme:
             synopsis = next(readme)
         config.print_stdout("%s - %s", tempname, synopsis)
 
     config.print_stdout("\nTemplates are used via the 'init' command, e.g.:")
     config.print_stdout("\n  alembic init --template pylons ./scripts")
+
 
 def init(config, directory, template='generic'):
     """Initialize a new scripts directory."""
@@ -26,7 +28,7 @@ def init(config, directory, template='generic'):
         raise util.CommandError("Directory %s already exists" % directory)
 
     template_dir = os.path.join(config.get_template_directory(),
-                                    template)
+                                template)
     if not os.access(template_dir, os.F_OK):
         raise util.CommandError("No such template %r" % template)
 
@@ -58,8 +60,8 @@ def init(config, directory, template='generic'):
                 output_file
             )
 
-    util.msg("Please edit configuration/connection/logging "\
-            "settings in %r before proceeding." % config_file)
+    util.msg("Please edit configuration/connection/logging "
+             "settings in %r before proceeding." % config_file)
 
 def revision(config, message=None, autogenerate=False, sql=False, skip=False):
     """Create a new revision file."""
@@ -77,6 +79,7 @@ def revision(config, message=None, autogenerate=False, sql=False, skip=False):
 
     if autogenerate:
         environment = True
+
         def retrieve_migrations(rev, context):
             if script.get_revision(rev) is not script.get_revision("head"):
                 if not skip:
@@ -130,6 +133,7 @@ def upgrade(config, revision, sql=False, tag=None):
     ):
         script.run_env()
 
+
 def downgrade(config, revision, sql=False, tag=None):
     """Revert to a previous version."""
 
@@ -140,7 +144,8 @@ def downgrade(config, revision, sql=False, tag=None):
             raise util.CommandError("Range revision not allowed")
         starting_rev, revision = revision.split(':', 2)
     elif sql:
-        raise util.CommandError("downgrade with --sql requires <fromrev>:<torev>")
+        raise util.CommandError(
+            "downgrade with --sql requires <fromrev>:<torev>")
 
     def downgrade(rev, context):
         return script._downgrade_revs(revision, rev)
@@ -156,6 +161,7 @@ def downgrade(config, revision, sql=False, tag=None):
     ):
         script.run_env()
 
+
 def history(config, rev_range=None):
     """List changeset scripts in chronological order."""
 
@@ -163,16 +169,16 @@ def history(config, rev_range=None):
     if rev_range is not None:
         if ":" not in rev_range:
             raise util.CommandError(
-                    "History range requires [start]:[end], "
-                    "[start]:, or :[end]")
+                "History range requires [start]:[end], "
+                "[start]:, or :[end]")
         base, head = rev_range.strip().split(":")
     else:
         base = head = None
 
     def _display_history(config, script, base, head):
         for sc in script.walk_revisions(
-                                base=base or "base",
-                                head=head or "head"):
+                base=base or "base",
+                head=head or "head"):
             if sc.is_head:
                 config.print_stdout("")
             config.print_stdout(sc.log_entry)
@@ -208,14 +214,16 @@ def branches(config):
             config.print_stdout(sc)
             for rev in sc.nextrev:
                 config.print_stdout("%s -> %s",
-                    " " * len(str(sc.down_revision)),
-                    script.get_revision(rev)
-                )
+                                    " " * len(str(sc.down_revision)),
+                                    script.get_revision(rev)
+                                    )
+
 
 def current(config, head_only=False):
     """Display the current revision for each database."""
 
     script = ScriptDirectory.from_config(config)
+
     def display_version(rev, context):
         rev = script.get_revision(rev)
 
@@ -238,11 +246,13 @@ def current(config, head_only=False):
     ):
         script.run_env()
 
+
 def stamp(config, revision, sql=False, tag=None):
     """'stamp' the revision table with the given revision; don't
     run any migrations."""
 
     script = ScriptDirectory.from_config(config)
+
     def do_stamp(rev, context):
         if sql:
             current = False
@@ -262,6 +272,7 @@ def stamp(config, revision, sql=False, tag=None):
         tag=tag
     ):
         script.run_env()
+
 
 def splice(config, parent, child):
     """'splice' two branches, creating a new revision file.

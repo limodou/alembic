@@ -14,11 +14,13 @@ from sqlalchemy.engine.reflection import Inspector
 from alembic import autogenerate
 from alembic.migration import MigrationContext
 from . import staging_env, sqlite_db, clear_staging_env, eq_, \
-        db_for_dialect
+    db_for_dialect
 
 py3k = sys.version_info >= (3, )
 
 names_in_this_test = set()
+
+
 def _default_include_object(obj, name, type_, reflected, compare_to):
     if type_ == "table":
         return name in names_in_this_test
@@ -29,11 +31,15 @@ _default_object_filters = [
     _default_include_object
 ]
 from sqlalchemy import event
+
+
 @event.listens_for(Table, "after_parent_attach")
 def new_table(table, parent):
     names_in_this_test.add(table.name)
 
+
 class AutogenTest(object):
+
     @classmethod
     def _get_bind(cls):
         return sqlite_db()
@@ -66,14 +72,16 @@ class AutogenTest(object):
             'connection': connection,
             'dialect': connection.dialect,
             'context': context
-            }
+        }
 
     @classmethod
     def teardown_class(cls):
         cls.m1.drop_all(cls.bind)
         clear_staging_env()
 
+
 class AutogenFixtureTest(object):
+
     def _fixture(self, m1, m2, include_schemas=False):
         self.metadata, model_metadata = m1, m2
         self.metadata.create_all(self.bind)
@@ -98,13 +106,14 @@ class AutogenFixtureTest(object):
                 'connection': connection,
                 'dialect': connection.dialect,
                 'context': context
-                }
+            }
             diffs = []
-            autogenerate._produce_net_changes(connection, model_metadata, diffs,
-                                              autogen_context,
-                                              object_filters=_default_object_filters,
-                                              include_schemas=include_schemas
-                                        )
+            autogenerate._produce_net_changes(
+                connection, model_metadata, diffs,
+                autogen_context,
+                object_filters=_default_object_filters,
+                include_schemas=include_schemas
+            )
             return diffs
 
     reports_unnamed_constraints = False
@@ -124,6 +133,7 @@ class AutogenFixtureTest(object):
 
 
 class AutogenCrossSchemaTest(AutogenTest, TestCase):
+
     @classmethod
     def _get_bind(cls):
         cls.test_schema_name = "test_schema"
@@ -133,30 +143,46 @@ class AutogenCrossSchemaTest(AutogenTest, TestCase):
     def _get_db_schema(cls):
         m = MetaData()
         Table('t1', m,
-                Column('x', Integer)
-            )
+              Column('x', Integer)
+              )
         Table('t2', m,
-                Column('y', Integer),
-                schema=cls.test_schema_name
-            )
+              Column('y', Integer),
+              schema=cls.test_schema_name
+              )
+        Table('t6', m,
+              Column('u', Integer)
+              )
+        Table('t7', m,
+              Column('v', Integer),
+              schema=cls.test_schema_name
+              )
+
         return m
 
     @classmethod
     def _get_model_schema(cls):
         m = MetaData()
         Table('t3', m,
-                Column('q', Integer)
-            )
+              Column('q', Integer)
+              )
         Table('t4', m,
-                Column('z', Integer),
-                schema=cls.test_schema_name
-            )
+              Column('z', Integer),
+              schema=cls.test_schema_name
+              )
+        Table('t6', m,
+              Column('u', Integer)
+              )
+        Table('t7', m,
+              Column('v', Integer),
+              schema=cls.test_schema_name
+              )
         return m
 
     def test_default_schema_omitted_upgrade(self):
         metadata = self.m2
         connection = self.context.bind
         diffs = []
+
         def include_object(obj, name, type_, reflected, compare_to):
             if type_ == "table":
                 return name == "t3"
@@ -174,6 +200,7 @@ class AutogenCrossSchemaTest(AutogenTest, TestCase):
         metadata = self.m2
         connection = self.context.bind
         diffs = []
+
         def include_object(obj, name, type_, reflected, compare_to):
             if type_ == "table":
                 return name == "t4"
@@ -191,6 +218,7 @@ class AutogenCrossSchemaTest(AutogenTest, TestCase):
         metadata = self.m2
         connection = self.context.bind
         diffs = []
+
         def include_object(obj, name, type_, reflected, compare_to):
             if type_ == "table":
                 return name == "t1"
@@ -208,6 +236,7 @@ class AutogenCrossSchemaTest(AutogenTest, TestCase):
         metadata = self.m2
         connection = self.context.bind
         diffs = []
+
         def include_object(obj, name, type_, reflected, compare_to):
             if type_ == "table":
                 return name == "t2"
@@ -223,6 +252,7 @@ class AutogenCrossSchemaTest(AutogenTest, TestCase):
 
 
 class AutogenDefaultSchemaTest(AutogenFixtureTest, TestCase):
+
     @classmethod
     def _get_bind(cls):
         cls.test_schema_name = "test_schema"
@@ -270,7 +300,6 @@ class AutogenDefaultSchemaTest(AutogenFixtureTest, TestCase):
         Table('a', m2, Column('x', String(50)), schema=default_schema)
         Table('a', m2, Column('y', String(50)), schema="test_schema")
 
-
         diffs = self._fixture(m1, m2, include_schemas=True)
         eq_(len(diffs), 1)
         eq_(diffs[0][0], "add_table")
@@ -288,28 +317,28 @@ class ModelOne(object):
         m = MetaData(schema=schema)
 
         Table('user', m,
-            Column('id', Integer, primary_key=True),
-            Column('name', String(50)),
-            Column('a1', Text),
-            Column("pw", String(50))
-        )
+              Column('id', Integer, primary_key=True),
+              Column('name', String(50)),
+              Column('a1', Text),
+              Column("pw", String(50))
+              )
 
         Table('address', m,
-            Column('id', Integer, primary_key=True),
-            Column('email_address', String(100), nullable=False),
-        )
+              Column('id', Integer, primary_key=True),
+              Column('email_address', String(100), nullable=False),
+              )
 
         Table('order', m,
-            Column('order_id', Integer, primary_key=True),
-            Column("amount", Numeric(8, 2), nullable=False,
-                    server_default="0"),
-            CheckConstraint('amount >= 0', name='ck_order_amount')
-        )
+              Column('order_id', Integer, primary_key=True),
+              Column("amount", Numeric(8, 2), nullable=False,
+                     server_default="0"),
+              CheckConstraint('amount >= 0', name='ck_order_amount')
+              )
 
         Table('extra', m,
-            Column("x", CHAR),
-            Column('uid', Integer, ForeignKey('user.id'))
-        )
+              Column("x", CHAR),
+              Column('uid', Integer, ForeignKey('user.id'))
+              )
 
         return m
 
@@ -320,33 +349,32 @@ class ModelOne(object):
         m = MetaData(schema=schema)
 
         Table('user', m,
-            Column('id', Integer, primary_key=True),
-            Column('name', String(50), nullable=False),
-            Column('a1', Text, server_default="x")
-        )
+              Column('id', Integer, primary_key=True),
+              Column('name', String(50), nullable=False),
+              Column('a1', Text, server_default="x")
+              )
 
         Table('address', m,
-            Column('id', Integer, primary_key=True),
-            Column('email_address', String(100), nullable=False),
-            Column('street', String(50)),
-        )
+              Column('id', Integer, primary_key=True),
+              Column('email_address', String(100), nullable=False),
+              Column('street', String(50)),
+              )
 
         Table('order', m,
-            Column('order_id', Integer, primary_key=True),
-            Column('amount', Numeric(10, 2), nullable=True,
-                        server_default="0"),
-            Column('user_id', Integer, ForeignKey('user.id')),
-            CheckConstraint('amount > -1', name='ck_order_amount'),
-        )
+              Column('order_id', Integer, primary_key=True),
+              Column('amount', Numeric(10, 2), nullable=True,
+                     server_default="0"),
+              Column('user_id', Integer, ForeignKey('user.id')),
+              CheckConstraint('amount > -1', name='ck_order_amount'),
+              )
 
         Table('item', m,
-            Column('id', Integer, primary_key=True),
-            Column('description', String(100)),
-            Column('order_id', Integer, ForeignKey('order.order_id')),
-            CheckConstraint('len(description) > 5')
-        )
+              Column('id', Integer, primary_key=True),
+              Column('description', String(100)),
+              Column('order_id', Integer, ForeignKey('order.order_id')),
+              CheckConstraint('len(description) > 5')
+              )
         return m
-
 
 
 class AutogenerateDiffTest(ModelOne, AutogenTest, TestCase):
@@ -357,10 +385,11 @@ class AutogenerateDiffTest(ModelOne, AutogenTest, TestCase):
         metadata = self.m2
         connection = self.context.bind
         diffs = []
-        autogenerate._produce_net_changes(connection, metadata, diffs,
-                                          self.autogen_context,
-                                          object_filters=_default_object_filters,
-                                    )
+        autogenerate._produce_net_changes(
+            connection, metadata, diffs,
+            self.autogen_context,
+            object_filters=_default_object_filters,
+        )
 
         eq_(
             diffs[0],
@@ -400,7 +429,6 @@ class AutogenerateDiffTest(ModelOne, AutogenTest, TestCase):
         eq_(diffs[7][0][5], True)
         eq_(diffs[7][0][6], False)
 
-
     def test_render_nothing(self):
         context = MigrationContext.configure(
             connection=self.bind.connect(),
@@ -416,11 +444,11 @@ class AutogenerateDiffTest(ModelOne, AutogenTest, TestCase):
         autogenerate._produce_migration_diffs(context, template_args, set())
 
         eq_(re.sub(r"u'", "'", template_args['upgrades']),
-"""### commands auto generated by Alembic - please adjust! ###
+            """### commands auto generated by Alembic - please adjust! ###
     pass
     ### end Alembic commands ###""")
         eq_(re.sub(r"u'", "'", template_args['downgrades']),
-"""### commands auto generated by Alembic - please adjust! ###
+            """### commands auto generated by Alembic - please adjust! ###
     pass
     ### end Alembic commands ###""")
 
@@ -428,10 +456,11 @@ class AutogenerateDiffTest(ModelOne, AutogenTest, TestCase):
         """test a full render including indentation"""
 
         template_args = {}
-        autogenerate._produce_migration_diffs(self.context, template_args, set())
+        autogenerate._produce_migration_diffs(
+            self.context, template_args, set())
 
         eq_(re.sub(r"u'", "'", template_args['upgrades']),
-"""### commands auto generated by Alembic - please adjust! ###
+            """### commands auto generated by Alembic - please adjust! ###
     op.create_table('item',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('description', sa.String(length=100), nullable=True),
@@ -441,7 +470,8 @@ class AutogenerateDiffTest(ModelOne, AutogenTest, TestCase):
     sa.PrimaryKeyConstraint('id')
     )
     op.drop_table('extra')
-    op.add_column('address', sa.Column('street', sa.String(length=50), nullable=True))
+    op.add_column('address', sa.Column('street', sa.String(length=50), \
+nullable=True))
     op.add_column('order', sa.Column('user_id', sa.Integer(), nullable=True))
     op.alter_column('order', 'amount',
                existing_type=sa.NUMERIC(precision=8, scale=2),
@@ -459,7 +489,7 @@ class AutogenerateDiffTest(ModelOne, AutogenTest, TestCase):
     ### end Alembic commands ###""")
 
         eq_(re.sub(r"u'", "'", template_args['downgrades']),
-"""### commands auto generated by Alembic - please adjust! ###
+            """### commands auto generated by Alembic - please adjust! ###
     op.alter_column('user', 'name',
                existing_type=sa.VARCHAR(length=50),
                nullable=True)
@@ -467,7 +497,8 @@ class AutogenerateDiffTest(ModelOne, AutogenTest, TestCase):
                existing_type=sa.TEXT(),
                server_default=None,
                existing_nullable=True)
-    op.add_column('user', sa.Column('pw', sa.VARCHAR(length=50), nullable=True))
+    op.add_column('user', sa.Column('pw', sa.VARCHAR(length=50), \
+nullable=True))
     op.alter_column('order', 'amount',
                existing_type=sa.Numeric(precision=10, scale=2),
                type_=sa.NUMERIC(precision=8, scale=2),
@@ -491,7 +522,7 @@ class AutogenerateDiffTest(ModelOne, AutogenTest, TestCase):
                 'compare_server_default': True,
                 'target_metadata': self.m2,
                 'include_symbol': lambda name, schema=None:
-                                    name in ('address', 'order'),
+                name in ('address', 'order'),
                 'upgrade_token': "upgrades",
                 'downgrade_token': "downgrades",
                 'alembic_module_prefix': 'op.',
@@ -500,9 +531,10 @@ class AutogenerateDiffTest(ModelOne, AutogenTest, TestCase):
         )
         template_args = {}
         autogenerate._produce_migration_diffs(context, template_args, set())
-        template_args['upgrades'] = template_args['upgrades'].replace("u'", "'")
+        template_args['upgrades'] = \
+            template_args['upgrades'].replace("u'", "'")
         template_args['downgrades'] = template_args['downgrades'].\
-                                        replace("u'", "'")
+            replace("u'", "'")
         assert "alter_column('user'" not in template_args['upgrades']
         assert "alter_column('user'" not in template_args['downgrades']
         assert "alter_column('order'" in template_args['upgrades']
@@ -542,9 +574,10 @@ class AutogenerateDiffTest(ModelOne, AutogenTest, TestCase):
         template_args = {}
         autogenerate._produce_migration_diffs(context, template_args, set())
 
-        template_args['upgrades'] = template_args['upgrades'].replace("u'", "'")
+        template_args['upgrades'] = \
+            template_args['upgrades'].replace("u'", "'")
         template_args['downgrades'] = template_args['downgrades'].\
-                                        replace("u'", "'")
+            replace("u'", "'")
         assert "op.create_table('item'" not in template_args['upgrades']
         assert "op.create_table('item'" not in template_args['downgrades']
 
@@ -558,19 +591,19 @@ class AutogenerateDiffTest(ModelOne, AutogenTest, TestCase):
     def test_skip_null_type_comparison_reflected(self):
         diff = []
         autogenerate.compare._compare_type(None, "sometable", "somecol",
-            Column("somecol", NULLTYPE),
-            Column("somecol", Integer()),
-            diff, self.autogen_context
-        )
+                                           Column("somecol", NULLTYPE),
+                                           Column("somecol", Integer()),
+                                           diff, self.autogen_context
+                                           )
         assert not diff
 
     def test_skip_null_type_comparison_local(self):
         diff = []
         autogenerate.compare._compare_type(None, "sometable", "somecol",
-            Column("somecol", Integer()),
-            Column("somecol", NULLTYPE),
-            diff, self.autogen_context
-        )
+                                           Column("somecol", Integer()),
+                                           Column("somecol", NULLTYPE),
+                                           diff, self.autogen_context
+                                           )
         assert not diff
 
     def test_affinity_typedec(self):
@@ -584,7 +617,8 @@ class AutogenerateDiffTest(ModelOne, AutogenTest, TestCase):
                     return dialect.type_descriptor(CHAR(32))
 
         diff = []
-        autogenerate.compare._compare_type(None, "sometable", "somecol",
+        autogenerate.compare._compare_type(
+            None, "sometable", "somecol",
             Column("somecol", Integer, nullable=True),
             Column("somecol", MyType()),
             diff, self.autogen_context
@@ -598,16 +632,16 @@ class AutogenerateDiffTest(ModelOne, AutogenTest, TestCase):
         autogenerate.compare._compare_tables(
             OrderedSet([(None, 'extra'), (None, 'user')]),
             OrderedSet(), [], inspector,
-                MetaData(), diffs, self.autogen_context
+            MetaData(), diffs, self.autogen_context
         )
         eq_(
             [(rec[0], rec[1].name) for rec in diffs],
             [('remove_table', 'extra'), ('remove_table', 'user')]
         )
 
+
 class AutogenerateDiffTestWSchema(ModelOne, AutogenTest, TestCase):
     schema = "test_schema"
-
 
     @classmethod
     def _get_bind(cls):
@@ -619,11 +653,12 @@ class AutogenerateDiffTestWSchema(ModelOne, AutogenTest, TestCase):
         metadata = self.m2
         connection = self.context.bind
         diffs = []
-        autogenerate._produce_net_changes(connection, metadata, diffs,
-                                          self.autogen_context,
-                                          object_filters=_default_object_filters,
-                                          include_schemas=True
-                                          )
+        autogenerate._produce_net_changes(
+            connection, metadata, diffs,
+            self.autogen_context,
+            object_filters=_default_object_filters,
+            include_schemas=True
+        )
 
         eq_(
             diffs[0],
@@ -677,15 +712,16 @@ class AutogenerateDiffTestWSchema(ModelOne, AutogenTest, TestCase):
             }
         )
         template_args = {}
-        autogenerate._produce_migration_diffs(context, template_args, set(),
-                include_symbol=lambda name, schema: False
-            )
+        autogenerate._produce_migration_diffs(
+            context, template_args, set(),
+            include_symbol=lambda name, schema: False
+        )
         eq_(re.sub(r"u'", "'", template_args['upgrades']),
-"""### commands auto generated by Alembic - please adjust! ###
+            """### commands auto generated by Alembic - please adjust! ###
     pass
     ### end Alembic commands ###""")
         eq_(re.sub(r"u'", "'", template_args['downgrades']),
-"""### commands auto generated by Alembic - please adjust! ###
+            """### commands auto generated by Alembic - please adjust! ###
     pass
     ### end Alembic commands ###""")
 
@@ -694,13 +730,13 @@ class AutogenerateDiffTestWSchema(ModelOne, AutogenTest, TestCase):
 
         template_args = {}
         autogenerate._produce_migration_diffs(
-                        self.context, template_args, set(),
-                        include_object=_default_include_object,
-                        include_schemas=True
-                        )
+            self.context, template_args, set(),
+            include_object=_default_include_object,
+            include_schemas=True
+        )
 
         eq_(re.sub(r"u'", "'", template_args['upgrades']),
-"""### commands auto generated by Alembic - please adjust! ###
+            """### commands auto generated by Alembic - please adjust! ###
     op.create_table('item',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('description', sa.String(length=100), nullable=True),
@@ -711,8 +747,10 @@ class AutogenerateDiffTestWSchema(ModelOne, AutogenTest, TestCase):
     schema='%(schema)s'
     )
     op.drop_table('extra', schema='%(schema)s')
-    op.add_column('address', sa.Column('street', sa.String(length=50), nullable=True), schema='%(schema)s')
-    op.add_column('order', sa.Column('user_id', sa.Integer(), nullable=True), schema='%(schema)s')
+    op.add_column('address', sa.Column('street', sa.String(length=50), \
+nullable=True), schema='%(schema)s')
+    op.add_column('order', sa.Column('user_id', sa.Integer(), nullable=True), \
+schema='%(schema)s')
     op.alter_column('order', 'amount',
                existing_type=sa.NUMERIC(precision=8, scale=2),
                type_=sa.Numeric(precision=10, scale=2),
@@ -732,7 +770,7 @@ class AutogenerateDiffTestWSchema(ModelOne, AutogenTest, TestCase):
     ### end Alembic commands ###""" % {"schema": self.schema})
 
         eq_(re.sub(r"u'", "'", template_args['downgrades']),
-"""### commands auto generated by Alembic - please adjust! ###
+            """### commands auto generated by Alembic - please adjust! ###
     op.alter_column('user', 'name',
                existing_type=sa.VARCHAR(length=50),
                nullable=True,
@@ -742,7 +780,8 @@ class AutogenerateDiffTestWSchema(ModelOne, AutogenTest, TestCase):
                server_default=None,
                existing_nullable=True,
                schema='%(schema)s')
-    op.add_column('user', sa.Column('pw', sa.VARCHAR(length=50), autoincrement=False, nullable=True), schema='%(schema)s')
+    op.add_column('user', sa.Column('pw', sa.VARCHAR(length=50), \
+autoincrement=False, nullable=True), schema='%(schema)s')
     op.alter_column('order', 'amount',
                existing_type=sa.Numeric(precision=10, scale=2),
                type_=sa.NUMERIC(precision=8, scale=2),
@@ -754,17 +793,16 @@ class AutogenerateDiffTestWSchema(ModelOne, AutogenTest, TestCase):
     op.create_table('extra',
     sa.Column('x', sa.CHAR(length=1), autoincrement=False, nullable=True),
     sa.Column('uid', sa.INTEGER(), autoincrement=False, nullable=True),
-    sa.ForeignKeyConstraint(['uid'], ['%(schema)s.user.id'], name='extra_uid_fkey'),
+    sa.ForeignKeyConstraint(['uid'], ['%(schema)s.user.id'], \
+name='extra_uid_fkey'),
     schema='%(schema)s'
     )
     op.drop_table('item', schema='%(schema)s')
     ### end Alembic commands ###""" % {"schema": self.schema})
 
 
-
-
-
 class AutogenerateCustomCompareTypeTest(AutogenTest, TestCase):
+
     @classmethod
     def _get_db_schema(cls):
         m = MetaData()
@@ -789,7 +827,7 @@ class AutogenerateCustomCompareTypeTest(AutogenTest, TestCase):
 
         diffs = []
         autogenerate._produce_net_changes(self.context.bind, self.m2,
-                                    diffs, self.autogen_context)
+                                          diffs, self.autogen_context)
 
         first_table = self.m2.tables['sometable']
         first_column = first_table.columns['id']
@@ -798,46 +836,48 @@ class AutogenerateCustomCompareTypeTest(AutogenTest, TestCase):
 
         # We'll just test the first call
         _, args, _ = my_compare_type.mock_calls[0]
-        context, inspected_column, metadata_column, inspected_type, metadata_type = args
+        (context, inspected_column, metadata_column,
+         inspected_type, metadata_type) = args
         eq_(context, self.context)
         eq_(metadata_column, first_column)
         eq_(metadata_type, first_column.type)
         eq_(inspected_column.name, first_column.name)
         eq_(type(inspected_type), INTEGER)
 
-    def test_column_type_not_modified_when_custom_compare_type_returns_False(self):
+    def test_column_type_not_modified_custom_compare_type_returns_False(self):
         my_compare_type = Mock()
         my_compare_type.return_value = False
         self.context._user_compare_type = my_compare_type
 
         diffs = []
         autogenerate._produce_net_changes(self.context.bind, self.m2,
-                                                diffs, self.autogen_context)
+                                          diffs, self.autogen_context)
 
         eq_(diffs, [])
 
-    def test_column_type_modified_when_custom_compare_type_returns_True(self):
+    def test_column_type_modified_custom_compare_type_returns_True(self):
         my_compare_type = Mock()
         my_compare_type.return_value = True
         self.context._user_compare_type = my_compare_type
 
         diffs = []
         autogenerate._produce_net_changes(self.context.bind, self.m2,
-                                                diffs, self.autogen_context)
+                                          diffs, self.autogen_context)
 
         eq_(diffs[0][0][0], 'modify_type')
         eq_(diffs[1][0][0], 'modify_type')
 
 
 class AutogenKeyTest(AutogenTest, TestCase):
+
     @classmethod
     def _get_db_schema(cls):
         m = MetaData()
 
         Table('someothertable', m,
-            Column('id', Integer, primary_key=True),
-            Column('value', Integer, key="somekey"),
-        )
+              Column('id', Integer, primary_key=True),
+              Column('value', Integer, key="somekey"),
+              )
         return m
 
     @classmethod
@@ -845,17 +885,18 @@ class AutogenKeyTest(AutogenTest, TestCase):
         m = MetaData()
 
         Table('sometable', m,
-            Column('id', Integer, primary_key=True),
-            Column('value', Integer, key="someotherkey"),
-        )
+              Column('id', Integer, primary_key=True),
+              Column('value', Integer, key="someotherkey"),
+              )
         Table('someothertable', m,
-            Column('id', Integer, primary_key=True),
-            Column('value', Integer, key="somekey"),
-            Column("othervalue", Integer, key="otherkey")
-        )
+              Column('id', Integer, primary_key=True),
+              Column('value', Integer, key="somekey"),
+              Column("othervalue", Integer, key="otherkey")
+              )
         return m
 
     symbols = ['someothertable', 'sometable']
+
     def test_autogen(self):
         metadata = self.m2
         connection = self.context.bind
@@ -871,7 +912,9 @@ class AutogenKeyTest(AutogenTest, TestCase):
         eq_(diffs[1][0], "add_column")
         eq_(diffs[1][3].key, "otherkey")
 
+
 class AutogenerateDiffOrderTest(AutogenTest, TestCase):
+
     @classmethod
     def _get_db_schema(cls):
         return MetaData()
@@ -880,12 +923,12 @@ class AutogenerateDiffOrderTest(AutogenTest, TestCase):
     def _get_model_schema(cls):
         m = MetaData()
         Table('parent', m,
-            Column('id', Integer, primary_key=True)
-        )
+              Column('id', Integer, primary_key=True)
+              )
 
         Table('child', m,
-            Column('parent_id', Integer, ForeignKey('parent.id')),
-        )
+              Column('parent_id', Integer, ForeignKey('parent.id')),
+              )
 
         return m
 
@@ -910,6 +953,7 @@ class AutogenerateDiffOrderTest(AutogenTest, TestCase):
 
 
 class CompareMetadataTest(ModelOne, AutogenTest, TestCase):
+
     def test_compare_metadata(self):
         metadata = self.m2
 
@@ -1020,6 +1064,7 @@ class CompareMetadataTest(ModelOne, AutogenTest, TestCase):
         eq_(diffs[2][1][5], False)
         eq_(diffs[2][1][6], True)
 
+
 class PGCompareMetaData(ModelOne, AutogenTest, TestCase):
     schema = "test_schema"
 
@@ -1060,4 +1105,3 @@ class PGCompareMetaData(ModelOne, AutogenTest, TestCase):
         eq_(diffs[4][0][0], 'modify_nullable')
         eq_(diffs[4][0][5], False)
         eq_(diffs[4][0][6], True)
-
