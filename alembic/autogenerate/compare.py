@@ -91,14 +91,15 @@ def _compare_tables(conn_table_names, metadata_table_names,
         if _run_filters(
                 metadata_table, tname, "table", False,
                 conn_table, object_filters):
-            _compare_columns(s, tname, object_filters,
+            removed_columns = _compare_columns(s, tname, object_filters,
                              conn_table,
                              metadata_table,
                              diffs, autogen_context, inspector)
             _compare_indexes_and_uniques(s, tname, object_filters,
                                          conn_table,
                                          metadata_table,
-                                         diffs, autogen_context, inspector)
+                                         diffs, autogen_context, inspector,
+                                         removed_columns)
 
     # TODO:
     # table constraints
@@ -127,6 +128,8 @@ def _compare_columns(schema, tname, object_filters, conn_table, metadata_table,
     conn_col_names = dict((c.name, c) for c in conn_table.c)
     metadata_col_names = OrderedSet(sorted(metadata_cols_by_name))
 
+    removed_columns = []
+
     for cname in metadata_col_names.difference(conn_col_names):
         if _run_filters(metadata_cols_by_name[cname], cname,
                         "column", False, None, object_filters):
@@ -145,6 +148,7 @@ def _compare_columns(schema, tname, object_filters, conn_table, metadata_table,
                 diffs.append(
                     ("remove_column", schema, tname, conn_table.c[cname])
                 )
+                removed_columns.append(cname)
                 log.info("{{white|green:Detected}} removed column '%s.%s'", name, cname)
             else:
                 log.info("{{white|red:Skipped}} removed column '%s.%s'", name, cname)
@@ -174,6 +178,8 @@ def _compare_columns(schema, tname, object_filters, conn_table, metadata_table,
                                 )
         if col_diff:
             diffs.append(col_diff)
+
+    return removed_columns
 
 
 class _constraint_sig(object):
@@ -225,7 +231,7 @@ def _get_index_column_names(idx):
 
 def _compare_indexes_and_uniques(schema, tname, object_filters, conn_table,
                                  metadata_table, diffs,
-                                 autogen_context, inspector):
+                                 autogen_context, inspector, removed_columns):
 
     is_create_table = conn_table is None
 
@@ -434,6 +440,10 @@ def _compare_indexes_and_uniques(schema, tname, object_filters, conn_table,
         if not conn_obj.is_index and conn_obj.sig in unnamed_metadata_uniques:
             continue
         elif removed_name in doubled_constraints:
+            #add if index is only one column and it's in removed columns, it'll
+            #be skipped
+            if len(conn_obj.sig) == 1 and conn_obj.sig[0] in removed_columns:
+                continue
             if conn_obj.sig not in metadata_indexes_by_sig and \
                     conn_obj.sig not in metadata_uniques_by_sig:
                 conn_uq, conn_idx = doubled_constraints[removed_name]
