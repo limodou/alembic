@@ -56,7 +56,7 @@ def _compare_tables(conn_table_names, metadata_table_names,
             _compare_indexes_and_uniques(s, tname, object_filters,
                                          None,
                                          metadata_table,
-                                         diffs, autogen_context, inspector)
+                                         diffs, autogen_context, inspector, [])
 
     removal_metadata = sa_schema.MetaData()
     for s, tname in conn_table_names.difference(metadata_table_names):
