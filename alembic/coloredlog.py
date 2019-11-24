@@ -41,7 +41,7 @@ class ColoredStream(object):
             if style:
                 part.append(getattr(colorama.Style, style.upper(), None))
             part.append(text)
-            part = filter(None, part)
+            part = list(filter(None, part))
             part.append(colorama.Fore.RESET + colorama.Back.RESET + colorama.Style.RESET_ALL)
             return ''.join(part)
         else:

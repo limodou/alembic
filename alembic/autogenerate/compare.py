@@ -500,13 +500,17 @@ def _get_type(t):
         r = '%s()' % 'BLOB'
     elif name.upper() == 'INTEGER':
         r = '%s()' % 'INTEGER'
+    elif name.upper() == 'BIGINTEGER':
+        r = '%s()' % 'BIGINT'
+    elif name.upper() == 'BIGINT':
+        r = '%s()' % 'BIGINT'
+    elif name.upper() == 'TINYINT':
+        r = 'BOOLEAN()'
     return r
 
 def _compare(c1, c2):
     r1 = _get_type(c1)
     r2 = _get_type(c2)
-    if r1.upper() == 'BOOLEAN()' or r2.upper() == 'BOOLEAN()':
-        return False
     if r1.upper() == 'MEDIUMTEXT()':
         return False
     else:
