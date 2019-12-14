@@ -35,10 +35,10 @@ else:
         return unicode(s, "utf-8")
 
 if py3k:
-    from configparser import ConfigParser as SafeConfigParser
+    from configparser import RawConfigParser as SafeConfigParser
     import configparser
 else:
-    from ConfigParser import SafeConfigParser
+    from ConfigParser import RawConfigParser
     import ConfigParser as configparser
 
 if py2k:
